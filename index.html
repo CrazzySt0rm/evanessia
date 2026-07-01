@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Evanessia</title>
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #07070f;
+      color: #dddaf5;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    h1 {
+      font-size: 2rem;
+      font-weight: 300;
+      letter-spacing: 0.35em;
+      color: #c4b8f0;
+      margin-bottom: 0.25rem;
+      text-transform: uppercase;
+    }
+
+    .subtitle {
+      font-size: 0.75rem;
+      letter-spacing: 0.2em;
+      color: #6a6490;
+      margin-bottom: 3rem;
+    }
+
+    /* Orb */
+    .orb-wrap {
+      position: relative;
+      width: 160px;
+      height: 160px;
+      margin-bottom: 2.5rem;
+      cursor: pointer;
+    }
+
+    .orb {
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 35%, #7c5cbf, #2a1a5e 70%);
+      box-shadow: 0 0 40px #5b3fa044, 0 0 80px #5b3fa022;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: box-shadow 0.3s, transform 0.2s;
+    }
+
+    .orb svg { width: 44px; height: 44px; fill: #c4b8f0; opacity: 0.85; }
+
+    .orb-wrap:hover .orb {
+      box-shadow: 0 0 55px #7c5cbf88, 0 0 100px #5b3fa044;
+      transform: scale(1.03);
+    }
+
+    /* Rings animation */
+    .ring {
+      position: absolute;
+      inset: 0;
+      border-radius: 50%;
+      border: 1px solid #7c5cbf44;
+      animation: none;
+    }
+
+    .orb-wrap.listening .orb {
+      box-shadow: 0 0 60px #a07de0bb, 0 0 120px #7c5cbf55;
+      background: radial-gradient(circle at 35% 35%, #9b7de0, #3a1f7e 70%);
+    }
+    .orb-wrap.listening .ring { animation: pulse 1.6s ease-out infinite; }
+    .orb-wrap.listening .ring:nth-child(2) { animation-delay: 0.4s; }
+    .orb-wrap.listening .ring:nth-child(3) { animation-delay: 0.8s; }
+
+    .orb-wrap.speaking .orb {
+      box-shadow: 0 0 60px #bf7dc0bb, 0 0 120px #7c3fa055;
+      background: radial-gradient(circle at 35% 35%, #bf7de0, #5a1a7e 70%);
+    }
+    .orb-wrap.speaking .ring { animation: pulse 2s ease-out infinite; border-color: #bf7dc044; }
+    .orb-wrap.speaking .ring:nth-child(2) { animation-delay: 0.5s; }
+    .orb-wrap.speaking .ring:nth-child(3) { animation-delay: 1s; }
+
+    @keyframes pulse {
+      0%   { transform: scale(1);   opacity: 0.7; }
+      100% { transform: scale(1.9); opacity: 0; }
+    }
+
+    /* Status */
+    .status {
+      font-size: 0.8rem;
+      letter-spacing: 0.15em;
+      color: #6a6490;
+      margin-bottom: 2rem;
+      height: 1.2em;
+      transition: color 0.3s;
+    }
+    .status.active { color: #a07de0; }
+
+    /* Conversation */
+    .bubble-wrap {
+      width: min(560px, 90vw);
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      max-height: 38vh;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+    .bubble-wrap::-webkit-scrollbar { width: 3px; }
+    .bubble-wrap::-webkit-scrollbar-thumb { background: #3a3060; border-radius: 2px; }
+
+    .bubble {
+      padding: 0.75rem 1.1rem;
+      border-radius: 14px;
+      font-size: 0.92rem;
+      line-height: 1.5;
+      max-width: 86%;
+      animation: fadeUp 0.3s ease;
+    }
+    .bubble.user {
+      align-self: flex-end;
+      background: #1e1650;
+      color: #c4b8f0;
+      border-bottom-right-radius: 4px;
+    }
+    .bubble.assistant {
+      align-self: flex-start;
+      background: #130e2a;
+      color: #dddaf5;
+      border: 1px solid #2a2050;
+      border-bottom-left-radius: 4px;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Footer hint */
+    .hint {
+      position: fixed;
+      bottom: 1.5rem;
+      font-size: 0.7rem;
+      color: #3a3460;
+      letter-spacing: 0.1em;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Evanessia</h1>
+  <p class="subtitle">голосовой ассистент</p>
+
+  <div class="orb-wrap" id="orb" title="Нажми чтобы говорить">
+    <div class="ring"></div>
+    <div class="ring"></div>
+    <div class="ring"></div>
+    <div class="orb">
+      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V20H9v2h6v-2h-2v-2.07A7 7 0 0 0 19 11h-2z"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="status" id="status">нажмите чтобы говорить</div>
+
+  <div class="bubble-wrap" id="bubbles"></div>
+
+  <p class="hint">Evanessia &nbsp;·&nbsp; powered by Groq &amp; Llama</p>
+
+<script>
+  const orb      = document.getElementById('orb');
+  const statusEl = document.getElementById('status');
+  const bubbles  = document.getElementById('bubbles');
+
+  const history  = [
+    {
+      role: 'system',
+      content: 'Ты — Evanessia, умный голосовой ассистент. Отвечай кратко, дружелюбно и по-русски. Избегай длинных перечислений — говори живым языком, как в разговоре.'
+    }
+  ];
+
+  // ── Speech Recognition ──────────────────────────────────────────────────────
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    statusEl.textContent = 'браузер не поддерживает распознавание речи (нужен Chrome)';
+  }
+
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'ru-RU';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+
+  let isListening = false;
+
+  orb.addEventListener('click', () => {
+    if (isListening) {
+      recognition.stop();
+    } else {
+      recognition.start();
+    }
+  });
+
+  recognition.onstart = () => {
+    isListening = true;
+    orb.classList.add('listening');
+    setStatus('слушаю…', true);
+  };
+
+  recognition.onend = () => {
+    isListening = false;
+    orb.classList.remove('listening');
+    if (!orb.classList.contains('speaking')) {
+      setStatus('нажмите чтобы говорить', false);
+    }
+  };
+
+  recognition.onerror = (e) => {
+    isListening = false;
+    orb.classList.remove('listening');
+    setStatus('ошибка: ' + e.error, false);
+  };
+
+  recognition.onresult = async (e) => {
+    const text = e.results[0][0].transcript.trim();
+    if (!text) return;
+    addBubble('user', text);
+    await sendToGroq(text);
+  };
+
+  // ── Groq API ─────────────────────────────────────────────────────────────────
+  async function sendToGroq(userText) {
+    history.push({ role: 'user', content: userText });
+    setStatus('думаю…', true);
+
+    try {
+      const res  = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: history }),
+      });
+      const data = await res.json();
+      const reply = data.choices?.[0]?.message?.content ?? 'Не получила ответ.';
+      history.push({ role: 'assistant', content: reply });
+      addBubble('assistant', reply);
+      speak(reply);
+    } catch {
+      setStatus('ошибка соединения', false);
+    }
+  }
+
+  // ── Text-to-Speech ───────────────────────────────────────────────────────────
+  let voices = [];
+  speechSynthesis.addEventListener('voiceschanged', () => { voices = speechSynthesis.getVoices(); });
+
+  function pickVoice() {
+    const ruFemale = voices.find(v => v.lang.startsWith('ru') && /female|irina|tatyana|milena|svetlana/i.test(v.name));
+    const ruAny    = voices.find(v => v.lang.startsWith('ru'));
+    return ruFemale || ruAny || voices[0] || null;
+  }
+
+  function speak(text) {
+    speechSynthesis.cancel();
+    const utt   = new SpeechSynthesisUtterance(text);
+    utt.lang    = 'ru-RU';
+    utt.rate    = 1.0;
+    utt.pitch   = 1.1;
+    const voice = pickVoice();
+    if (voice) utt.voice = voice;
+
+    utt.onstart = () => {
+      orb.classList.add('speaking');
+      setStatus('говорю…', true);
+    };
+    utt.onend = () => {
+      orb.classList.remove('speaking');
+      setStatus('нажмите чтобы говорить', false);
+    };
+
+    speechSynthesis.speak(utt);
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────────
+  function setStatus(text, active) {
+    statusEl.textContent = text;
+    statusEl.className   = 'status' + (active ? ' active' : '');
+  }
+
+  function addBubble(role, text) {
+    const div = document.createElement('div');
+    div.className = `bubble ${role}`;
+    div.textContent = text;
+    bubbles.appendChild(div);
+    bubbles.scrollTop = bubbles.scrollHeight;
+  }
+</script>
+</body>
+</html>
