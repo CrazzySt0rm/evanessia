@@ -311,7 +311,7 @@
   let awaitingQuery = false;
 
   function startListening() {
-    recognition.continuous    = wakeMode && !awaitingQuery;
+    recognition.continuous     = false;
     recognition.interimResults = false;
     try { recognition.start(); } catch {}
   }
@@ -333,12 +333,13 @@
   recognition.onend = () => {
     isListening = false;
     orb.classList.remove('listening');
-    if (awaitingQuery) awaitingQuery = false;
+
+    if (awaitingQuery) return;
 
     if (wakeMode && !orb.classList.contains('speaking')) {
       orb.classList.add('standby');
-      setStatus('жду «Эванессия»…', false);
-      setTimeout(() => { if (wakeMode && !isListening) startListening(); }, 400);
+      setStatus('жду «Эва»…', false);
+      setTimeout(() => { if (wakeMode && !isListening) startListening(); }, 100);
     } else if (!orb.classList.contains('speaking')) {
       setStatus('нажмите чтобы говорить', false);
     }
@@ -354,7 +355,7 @@
   };
 
   recognition.onresult = async (e) => {
-    const text = e.results[0][0].transcript.trim();
+    const text = e.results[e.resultIndex][0].transcript.trim();
     if (!text) return;
 
     if (awaitingQuery) {
@@ -377,7 +378,7 @@
           awaitingQuery = true;
           orb.classList.remove('standby');
           setStatus('слушаю…', true);
-          setTimeout(startListening, 200);
+          setTimeout(startListening, 1500);
         }
       }
       return;
@@ -395,7 +396,7 @@
 
     if (wakeMode) {
       orb.classList.add('standby');
-      setStatus('жду «Эванессия»…', false);
+      setStatus('жду «Эва»…', false);
       startListening();
     } else {
       orb.classList.remove('standby');
@@ -424,7 +425,7 @@
       addBubble('assistant', reply);
       speak(reply);
     } catch {
-      setStatus(wakeMode ? 'жду «Эванессия»…' : 'ошибка соединения', false);
+      setStatus(wakeMode ? 'жду «Эва»…' : 'ошибка соединения', false);
     }
   }
 
@@ -471,7 +472,7 @@
       orb.classList.remove('speaking');
       if (wakeMode) {
         orb.classList.add('standby');
-        setStatus('жду «Эванессия»…', false);
+        setStatus('жду «Эва»…', false);
         setTimeout(() => { if (wakeMode && !isListening) startListening(); }, 300);
       } else {
         setStatus('нажмите чтобы говорить', false);
