@@ -311,6 +311,8 @@
   let awaitingQuery = false;
 
   function startListening() {
+    recognition.continuous    = wakeMode && !awaitingQuery;
+    recognition.interimResults = false;
     try { recognition.start(); } catch {}
   }
 
