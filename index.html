@@ -2,46 +2,61 @@
 <html lang="ru">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Evanessia</title>
   <style>
     *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
+    :root {
+      --bg:           #07070f;
+      --surface:      #0e0d1e;
+      --border:       #1e1a3a;
+      --accent:       #7c5cbf;
+      --accent-light: #c4b8f0;
+      --text:         #dddaf5;
+      --muted:        #6a6490;
+    }
+
     body {
-      background: #07070f;
-      color: #dddaf5;
+      background: var(--bg);
+      color: var(--text);
       font-family: 'Segoe UI', system-ui, sans-serif;
-      min-height: 100vh;
+      height: 100dvh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      justify-content: center;
       overflow: hidden;
     }
 
+    header {
+      padding: 1.25rem 0 0.25rem;
+      text-align: center;
+      flex-shrink: 0;
+    }
+
     h1 {
-      font-size: 2rem;
+      font-size: clamp(1.3rem, 4vw, 2rem);
       font-weight: 300;
       letter-spacing: 0.35em;
-      color: #c4b8f0;
-      margin-bottom: 0.25rem;
+      color: var(--accent-light);
       text-transform: uppercase;
     }
 
     .subtitle {
-      font-size: 0.75rem;
+      font-size: 0.7rem;
       letter-spacing: 0.2em;
-      color: #6a6490;
-      margin-bottom: 3rem;
+      color: var(--muted);
+      margin-top: 0.15rem;
     }
 
-    /* Orb */
+    /* ── Orb ── */
     .orb-wrap {
       position: relative;
-      width: 160px;
-      height: 160px;
-      margin-bottom: 2.5rem;
+      width: clamp(100px, 22vw, 140px);
+      height: clamp(100px, 22vw, 140px);
+      margin: 0.9rem 0 0.6rem;
       cursor: pointer;
+      flex-shrink: 0;
     }
 
     .orb {
@@ -53,37 +68,33 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: box-shadow 0.3s, transform 0.2s;
+      transition: box-shadow 0.3s, transform 0.2s, opacity 0.3s;
     }
 
-    .orb svg { width: 44px; height: 44px; fill: #c4b8f0; opacity: 0.85; }
+    .orb svg { width: 34px; height: 34px; fill: var(--accent-light); opacity: 0.85; }
+    .orb-wrap:hover .orb { box-shadow: 0 0 55px #7c5cbf88, 0 0 100px #5b3fa044; transform: scale(1.03); }
 
-    .orb-wrap:hover .orb {
-      box-shadow: 0 0 55px #7c5cbf88, 0 0 100px #5b3fa044;
-      transform: scale(1.03);
-    }
-
-    /* Rings animation */
     .ring {
       position: absolute;
       inset: 0;
       border-radius: 50%;
       border: 1px solid #7c5cbf44;
-      animation: none;
     }
 
-    .orb-wrap.listening .orb {
-      box-shadow: 0 0 60px #a07de0bb, 0 0 120px #7c5cbf55;
-      background: radial-gradient(circle at 35% 35%, #9b7de0, #3a1f7e 70%);
-    }
-    .orb-wrap.listening .ring { animation: pulse 1.6s ease-out infinite; }
+    /* standby — dim slow pulse */
+    .orb-wrap.standby .orb { opacity: 0.55; box-shadow: 0 0 20px #2a1a5033; }
+    .orb-wrap.standby .ring { animation: pulse 3.5s ease-out infinite; opacity: 0.3; }
+    .orb-wrap.standby .ring:nth-child(2) { animation-delay: 1.1s; }
+    .orb-wrap.standby .ring:nth-child(3) { animation-delay: 2.2s; }
+
+    /* listening */
+    .orb-wrap.listening .orb { box-shadow: 0 0 60px #a07de0bb, 0 0 120px #7c5cbf55; background: radial-gradient(circle at 35% 35%, #9b7de0, #3a1f7e 70%); }
+    .orb-wrap.listening .ring { animation: pulse 1.5s ease-out infinite; }
     .orb-wrap.listening .ring:nth-child(2) { animation-delay: 0.4s; }
     .orb-wrap.listening .ring:nth-child(3) { animation-delay: 0.8s; }
 
-    .orb-wrap.speaking .orb {
-      box-shadow: 0 0 60px #bf7dc0bb, 0 0 120px #7c3fa055;
-      background: radial-gradient(circle at 35% 35%, #bf7de0, #5a1a7e 70%);
-    }
+    /* speaking */
+    .orb-wrap.speaking .orb { box-shadow: 0 0 60px #bf7dc0bb, 0 0 120px #7c3fa055; background: radial-gradient(circle at 35% 35%, #bf7de0, #5a1a7e 70%); }
     .orb-wrap.speaking .ring { animation: pulse 2s ease-out infinite; border-color: #bf7dc044; }
     .orb-wrap.speaking .ring:nth-child(2) { animation-delay: 0.5s; }
     .orb-wrap.speaking .ring:nth-child(3) { animation-delay: 1s; }
@@ -93,132 +104,240 @@
       100% { transform: scale(1.9); opacity: 0; }
     }
 
-    /* Status */
+    /* ── Status ── */
     .status {
-      font-size: 0.8rem;
-      letter-spacing: 0.15em;
-      color: #6a6490;
-      margin-bottom: 2rem;
-      height: 1.2em;
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      height: 1.1em;
+      margin-bottom: 0.6rem;
       transition: color 0.3s;
+      flex-shrink: 0;
     }
-    .status.active { color: #a07de0; }
+    .status.active { color: var(--accent-light); }
 
-    /* Conversation */
+    /* ── Controls ── */
+    .controls {
+      display: flex;
+      gap: 0.6rem;
+      margin-bottom: 0.6rem;
+      flex-shrink: 0;
+    }
+
+    .ctrl-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 20px;
+      padding: 0.28rem 0.8rem;
+      font-size: 0.68rem;
+      letter-spacing: 0.07em;
+      cursor: pointer;
+      transition: border-color 0.2s, color 0.2s, background 0.2s;
+      white-space: nowrap;
+    }
+    .ctrl-btn:hover  { border-color: var(--accent); color: var(--accent-light); }
+    .ctrl-btn.on     { border-color: var(--accent); color: var(--accent-light); background: #1a0e3a; }
+
+    /* ── Bubbles ── */
     .bubble-wrap {
-      width: min(560px, 90vw);
+      width: min(560px, 92vw);
+      flex: 1;
+      overflow-y: auto;
       display: flex;
       flex-direction: column;
-      gap: 0.75rem;
-      max-height: 38vh;
-      overflow-y: auto;
-      padding-right: 4px;
+      gap: 0.55rem;
+      padding: 0.2rem 0.2rem 0.4rem;
     }
     .bubble-wrap::-webkit-scrollbar { width: 3px; }
     .bubble-wrap::-webkit-scrollbar-thumb { background: #3a3060; border-radius: 2px; }
 
     .bubble {
-      padding: 0.75rem 1.1rem;
+      padding: 0.6rem 0.95rem;
       border-radius: 14px;
-      font-size: 0.92rem;
-      line-height: 1.5;
+      font-size: 0.875rem;
+      line-height: 1.55;
       max-width: 86%;
-      animation: fadeUp 0.3s ease;
+      animation: fadeUp 0.25s ease;
     }
     .bubble.user {
       align-self: flex-end;
       background: #1e1650;
-      color: #c4b8f0;
+      color: var(--accent-light);
       border-bottom-right-radius: 4px;
     }
     .bubble.assistant {
       align-self: flex-start;
-      background: #130e2a;
-      color: #dddaf5;
-      border: 1px solid #2a2050;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
       border-bottom-left-radius: 4px;
     }
 
     @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(8px); }
+      from { opacity: 0; transform: translateY(6px); }
       to   { opacity: 1; transform: translateY(0); }
     }
 
-    /* Footer hint */
-    .hint {
-      position: fixed;
-      bottom: 1.5rem;
-      font-size: 0.7rem;
-      color: #3a3460;
-      letter-spacing: 0.1em;
+    /* ── Text input ── */
+    .input-row {
+      width: min(560px, 92vw);
+      display: flex;
+      gap: 0.5rem;
+      padding: 0.65rem 0;
+      flex-shrink: 0;
+      border-top: 1px solid var(--border);
     }
+
+    .text-input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 22px;
+      padding: 0.55rem 1rem;
+      color: var(--text);
+      font-size: 0.875rem;
+      font-family: inherit;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .text-input:focus { border-color: var(--accent); }
+    .text-input::placeholder { color: var(--muted); }
+
+    .send-btn {
+      background: var(--accent);
+      border: none;
+      border-radius: 50%;
+      width: 38px;
+      height: 38px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.2s, transform 0.15s;
+    }
+    .send-btn:hover { background: #9b7de0; transform: scale(1.05); }
+    .send-btn svg { width: 17px; height: 17px; fill: white; }
   </style>
 </head>
 <body>
 
+<header>
   <h1>Evanessia</h1>
   <p class="subtitle">голосовой ассистент</p>
+</header>
 
-  <div class="orb-wrap" id="orb" title="Нажми чтобы говорить">
-    <div class="ring"></div>
-    <div class="ring"></div>
-    <div class="ring"></div>
-    <div class="orb">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V20H9v2h6v-2h-2v-2.07A7 7 0 0 0 19 11h-2z"/>
-      </svg>
-    </div>
+<div class="orb-wrap" id="orb" title="Нажми чтобы говорить">
+  <div class="ring"></div>
+  <div class="ring"></div>
+  <div class="ring"></div>
+  <div class="orb">
+    <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V20H9v2h6v-2h-2v-2.07A7 7 0 0 0 19 11h-2z"/></svg>
   </div>
+</div>
 
-  <div class="status" id="status">нажмите чтобы говорить</div>
+<div class="status" id="status">нажмите чтобы говорить</div>
 
-  <div class="bubble-wrap" id="bubbles"></div>
+<div class="controls">
+  <button class="ctrl-btn" id="wakeBtn">⌀ слово-пробуждение</button>
+  <button class="ctrl-btn" id="clearBtn">очистить историю</button>
+</div>
 
-  <p class="hint">Evanessia &nbsp;·&nbsp; powered by Groq &amp; Llama</p>
+<div class="bubble-wrap" id="bubbles"></div>
+
+<div class="input-row">
+  <input class="text-input" id="textInput" type="text" placeholder="Напишите сообщение…" autocomplete="off" />
+  <button class="send-btn" id="sendBtn">
+    <svg viewBox="0 0 24 24"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+  </button>
+</div>
 
 <script>
-  const orb      = document.getElementById('orb');
-  const statusEl = document.getElementById('status');
-  const bubbles  = document.getElementById('bubbles');
+  const orb       = document.getElementById('orb');
+  const statusEl  = document.getElementById('status');
+  const bubblesEl = document.getElementById('bubbles');
+  const wakeBtn   = document.getElementById('wakeBtn');
+  const clearBtn  = document.getElementById('clearBtn');
+  const textInput = document.getElementById('textInput');
+  const sendBtn   = document.getElementById('sendBtn');
 
-  const history  = [
-    {
-      role: 'system',
-      content: 'Ты — Evanessia, умный голосовой ассистент. Отвечай кратко, дружелюбно и по-русски. Избегай длинных перечислений — говори живым языком, как в разговоре.'
-    }
-  ];
+  const STORAGE_KEY = 'evanessia_history';
+  const MAX_SAVED   = 40;
+  const WAKE_WORDS  = ['эванессия', 'эванесия', 'эванесс', 'evanessia'];
 
-  // ── Speech Recognition ──────────────────────────────────────────────────────
-  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) {
-    statusEl.textContent = 'браузер не поддерживает распознавание речи (нужен Chrome)';
+  const SYSTEM_MSG = {
+    role: 'system',
+    content: 'Ты — Evanessia, умный голосовой ассистент. Отвечай кратко, дружелюбно и по-русски. Избегай длинных перечислений — говори живым языком, как в разговоре.'
+  };
+
+  // ── History ────────────────────────────────────────────────────────────────
+  let history = [SYSTEM_MSG];
+
+  function loadHistory() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+      if (saved.length) {
+        history = [SYSTEM_MSG, ...saved];
+        saved.forEach(m => addBubble(m.role, m.content, false));
+        bubblesEl.scrollTop = bubblesEl.scrollHeight;
+      }
+    } catch {}
   }
 
-  const recognition = new SpeechRecognition();
-  recognition.lang = 'ru-RU';
-  recognition.interimResults = false;
+  function saveHistory() {
+    const msgs = history.filter(m => m.role !== 'system').slice(-MAX_SAVED);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs));
+  }
+
+  function clearHistory() {
+    if (!confirm('Очистить историю разговора?')) return;
+    history = [SYSTEM_MSG];
+    localStorage.removeItem(STORAGE_KEY);
+    bubblesEl.innerHTML = '';
+  }
+
+  // ── Speech Recognition ─────────────────────────────────────────────────────
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRec) setStatus('нужен Chrome для распознавания речи', false);
+
+  const recognition           = new SpeechRec();
+  recognition.lang            = 'ru-RU';
+  recognition.interimResults  = false;
   recognition.maxAlternatives = 1;
 
-  let isListening = false;
+  let isListening   = false;
+  let wakeMode      = false;
+  let awaitingQuery = false;
+
+  function startListening() {
+    try { recognition.start(); } catch {}
+  }
 
   orb.addEventListener('click', () => {
-    if (isListening) {
-      recognition.stop();
-    } else {
-      recognition.start();
-    }
+    if (wakeMode) return;
+    isListening ? recognition.stop() : startListening();
   });
 
   recognition.onstart = () => {
     isListening = true;
-    orb.classList.add('listening');
-    setStatus('слушаю…', true);
+    if (!wakeMode || awaitingQuery) {
+      orb.classList.remove('standby');
+      orb.classList.add('listening');
+      setStatus('слушаю…', true);
+    }
   };
 
   recognition.onend = () => {
     isListening = false;
     orb.classList.remove('listening');
-    if (!orb.classList.contains('speaking')) {
+    if (awaitingQuery) awaitingQuery = false;
+
+    if (wakeMode && !orb.classList.contains('speaking')) {
+      orb.classList.add('standby');
+      setStatus('жду «Эванессия»…', false);
+      setTimeout(() => { if (wakeMode && !isListening) startListening(); }, 400);
+    } else if (!orb.classList.contains('speaking')) {
       setStatus('нажмите чтобы говорить', false);
     }
   };
@@ -226,81 +345,156 @@
   recognition.onerror = (e) => {
     isListening = false;
     orb.classList.remove('listening');
-    setStatus('ошибка: ' + e.error, false);
+    if (e.error !== 'no-speech' && e.error !== 'aborted') {
+      setStatus('ошибка: ' + e.error, false);
+    }
+    if (wakeMode) setTimeout(() => { if (wakeMode && !isListening) startListening(); }, 600);
   };
 
   recognition.onresult = async (e) => {
     const text = e.results[0][0].transcript.trim();
     if (!text) return;
+
+    if (awaitingQuery) {
+      awaitingQuery = false;
+      addBubble('user', text);
+      await sendToGroq(text);
+      return;
+    }
+
+    if (wakeMode) {
+      const lower     = text.toLowerCase();
+      const wakeFound = WAKE_WORDS.find(w => lower.includes(w));
+      if (wakeFound) {
+        const idx   = lower.indexOf(wakeFound);
+        const query = text.slice(idx + wakeFound.length).trim();
+        if (query.length > 1) {
+          addBubble('user', query);
+          await sendToGroq(query);
+        } else {
+          awaitingQuery = true;
+          orb.classList.remove('standby');
+          setStatus('слушаю…', true);
+          setTimeout(startListening, 200);
+        }
+      }
+      return;
+    }
+
     addBubble('user', text);
     await sendToGroq(text);
   };
 
-  // ── Groq API ─────────────────────────────────────────────────────────────────
+  // ── Wake word toggle ───────────────────────────────────────────────────────
+  wakeBtn.addEventListener('click', () => {
+    wakeMode = !wakeMode;
+    wakeBtn.classList.toggle('on', wakeMode);
+    wakeBtn.textContent = wakeMode ? '● слово-пробуждение' : '⌀ слово-пробуждение';
+
+    if (wakeMode) {
+      orb.classList.add('standby');
+      setStatus('жду «Эванессия»…', false);
+      startListening();
+    } else {
+      orb.classList.remove('standby');
+      try { recognition.stop(); } catch {}
+      setStatus('нажмите чтобы говорить', false);
+    }
+  });
+
+  clearBtn.addEventListener('click', clearHistory);
+
+  // ── Groq API ───────────────────────────────────────────────────────────────
   async function sendToGroq(userText) {
     history.push({ role: 'user', content: userText });
     setStatus('думаю…', true);
 
     try {
-      const res  = await fetch('/chat', {
+      const res   = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: history }),
       });
-      const data = await res.json();
+      const data  = await res.json();
       const reply = data.choices?.[0]?.message?.content ?? 'Не получила ответ.';
       history.push({ role: 'assistant', content: reply });
+      saveHistory();
       addBubble('assistant', reply);
       speak(reply);
     } catch {
-      setStatus('ошибка соединения', false);
+      setStatus(wakeMode ? 'жду «Эванессия»…' : 'ошибка соединения', false);
     }
   }
 
-  // ── Text-to-Speech ───────────────────────────────────────────────────────────
+  // ── Text input ─────────────────────────────────────────────────────────────
+  async function handleTextSend() {
+    const text = textInput.value.trim();
+    if (!text) return;
+    textInput.value = '';
+    addBubble('user', text);
+    await sendToGroq(text);
+  }
+
+  sendBtn.addEventListener('click', handleTextSend);
+  textInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleTextSend(); }
+  });
+
+  // ── TTS ────────────────────────────────────────────────────────────────────
   let voices = [];
-  speechSynthesis.addEventListener('voiceschanged', () => { voices = speechSynthesis.getVoices(); });
+  const loadVoices = () => { voices = speechSynthesis.getVoices(); };
+  loadVoices();
+  speechSynthesis.addEventListener('voiceschanged', loadVoices);
 
   function pickVoice() {
     const ruFemale = voices.find(v => v.lang.startsWith('ru') && /female|irina|tatyana|milena|svetlana/i.test(v.name));
-    const ruAny    = voices.find(v => v.lang.startsWith('ru'));
-    return ruFemale || ruAny || voices[0] || null;
+    return ruFemale || voices.find(v => v.lang.startsWith('ru')) || voices[0] || null;
   }
 
   function speak(text) {
     speechSynthesis.cancel();
-    const utt   = new SpeechSynthesisUtterance(text);
-    utt.lang    = 'ru-RU';
-    utt.rate    = 1.0;
-    utt.pitch   = 1.1;
-    const voice = pickVoice();
-    if (voice) utt.voice = voice;
+    const utt  = new SpeechSynthesisUtterance(text);
+    utt.lang   = 'ru-RU';
+    utt.rate   = 1.0;
+    utt.pitch  = 1.1;
+    const v    = pickVoice();
+    if (v) utt.voice = v;
 
     utt.onstart = () => {
+      orb.classList.remove('standby', 'listening');
       orb.classList.add('speaking');
       setStatus('говорю…', true);
     };
     utt.onend = () => {
       orb.classList.remove('speaking');
-      setStatus('нажмите чтобы говорить', false);
+      if (wakeMode) {
+        orb.classList.add('standby');
+        setStatus('жду «Эванессия»…', false);
+        setTimeout(() => { if (wakeMode && !isListening) startListening(); }, 300);
+      } else {
+        setStatus('нажмите чтобы говорить', false);
+      }
     };
 
     speechSynthesis.speak(utt);
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────────
   function setStatus(text, active) {
     statusEl.textContent = text;
     statusEl.className   = 'status' + (active ? ' active' : '');
   }
 
-  function addBubble(role, text) {
+  function addBubble(role, text, animate = true) {
     const div = document.createElement('div');
     div.className = `bubble ${role}`;
+    if (!animate) div.style.animation = 'none';
     div.textContent = text;
-    bubbles.appendChild(div);
-    bubbles.scrollTop = bubbles.scrollHeight;
+    bubblesEl.appendChild(div);
+    bubblesEl.scrollTop = bubblesEl.scrollHeight;
   }
+
+  loadHistory();
 </script>
 </body>
 </html>
