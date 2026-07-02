@@ -309,6 +309,30 @@
   let isListening   = false;
   let wakeMode      = false;
   let awaitingQuery = false;
+  let convTimer     = null;
+
+  function startConversation() {
+    awaitingQuery = true;
+    clearTimeout(convTimer);
+    orb.classList.remove('standby', 'speaking');
+    orb.classList.add('listening');
+    setStatus('слушаю…', true);
+    setTimeout(startListening, 400);
+    convTimer = setTimeout(endConversation, 12000);
+  }
+
+  function endConversation() {
+    awaitingQuery = false;
+    clearTimeout(convTimer);
+    orb.classList.remove('listening');
+    if (wakeMode) {
+      orb.classList.add('standby');
+      setStatus('жду «Эва»…', false);
+      startListening();
+    } else {
+      setStatus('нажмите чтобы говорить', false);
+    }
+  }
 
   function startListening() {
     recognition.continuous     = false;
@@ -334,7 +358,10 @@
     isListening = false;
     orb.classList.remove('listening');
 
-    if (awaitingQuery) return;
+    if (awaitingQuery) {
+      setTimeout(() => { if (awaitingQuery && !isListening) startListening(); }, 100);
+      return;
+    }
 
     if (wakeMode && !orb.classList.contains('speaking')) {
       orb.classList.add('standby');
@@ -359,6 +386,7 @@
     if (!text) return;
 
     if (awaitingQuery) {
+      clearTimeout(convTimer);
       awaitingQuery = false;
       addBubble('user', text);
       await sendToGroq(text);
@@ -375,10 +403,7 @@
           addBubble('user', query);
           await sendToGroq(query);
         } else {
-          awaitingQuery = true;
-          orb.classList.remove('standby');
-          setStatus('слушаю…', true);
-          setTimeout(startListening, 1500);
+          setTimeout(startConversation, 800);
         }
       }
       return;
@@ -471,9 +496,7 @@
     utt.onend = () => {
       orb.classList.remove('speaking');
       if (wakeMode) {
-        orb.classList.add('standby');
-        setStatus('жду «Эва»…', false);
-        setTimeout(() => { if (wakeMode && !isListening) startListening(); }, 300);
+        startConversation();
       } else {
         setStatus('нажмите чтобы говорить', false);
       }
