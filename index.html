@@ -212,7 +212,7 @@
 
     /* ── Character column (right) ── */
     .char-col {
-      width: clamp(180px, 26vw, 300px);
+      width: clamp(220px, 28vw, 340px);
       position: relative;
       flex-shrink: 0;
       background: radial-gradient(ellipse at 50% 65%, #110826, #07070f);
@@ -362,9 +362,8 @@
 
   const canvas      = document.getElementById('vrmCanvas');
   const charCol     = document.getElementById('charCol');
-  const orbFallback = document.getElementById('orbFallback');
 
-  const W = charCol.clientWidth  || 260;
+  const W = charCol.clientWidth  || 280;
   const H = charCol.clientHeight || window.innerHeight;
 
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true });
@@ -374,11 +373,10 @@
 
   const scene  = new THREE.Scene();
 
-  // Full-body framing: FOV 35°, camera centred at mid-body (Y≈0.81),
-  // distance chosen so visible height covers 0→1.62 m (feet to head)
-  const camera = new THREE.PerspectiveCamera(35, W / H, 0.01, 20);
-  camera.position.set(0, 0.81, 2.55);
-  camera.lookAt(0, 0.81, 0);
+  // Pull far back so full body + arms fit; FOV 28 keeps proportions natural
+  const camera = new THREE.PerspectiveCamera(28, W / H, 0.01, 20);
+  camera.position.set(0, 0.95, 5.2);
+  camera.lookAt(0, 0.85, 0);
 
   // Lighting
   scene.add(new THREE.AmbientLight(0x9988dd, 0.6));
@@ -396,19 +394,34 @@
   let evaState = 'idle';
   const clock  = new THREE.Clock();
 
-  // Animation vars
-  let breathT = 0;
+  // Stored initial bone rotations (set after model loads)
+  const bones   = {};
+  const initRot = {};
+  const BONE_NAMES = [
+    'hips','spine','chest','upperChest','neck','head',
+    'leftUpperArm','rightUpperArm','leftLowerArm','rightLowerArm'
+  ];
+
+  // Smooth animation targets
   let blinkTimer = 2, blinkInterval = 3 + Math.random() * 2;
   let blinkVal = 0, blinkDir = 0;
-  let mouthPhase  = 0;
+  let mouthPhase = 0;
   let headTiltCur = 0, headTiltTgt = 0;
-  let headNodCur  = 0, headNodTgt  = 0;
 
   const lerp = (a, b, t) => a + (b - a) * t;
 
   function setExpr(name, w) {
     if (!vrm?.expressionManager) return;
     try { vrm.expressionManager.setValue(name, Math.max(0, Math.min(1, w))); } catch {}
+  }
+
+  // Apply delta rotation on top of stored rest pose
+  function addRot(name, dx = 0, dy = 0, dz = 0) {
+    if (!bones[name]) return;
+    const r = initRot[name];
+    bones[name].rotation.x = r.x + dx;
+    bones[name].rotation.y = r.y + dy;
+    bones[name].rotation.z = r.z + dz;
   }
 
   const loader = new GLTFLoader();
@@ -418,9 +431,18 @@
     gltf => {
       vrm = gltf.userData.vrm;
       try { VRMUtils.removeUnnecessaryJoints(vrm.scene); } catch {}
-      // Rotate to face the camera (VRM front = +Z, camera is at +Z)
-      vrm.scene.rotation.y = Math.PI;
+      vrm.scene.rotation.y = Math.PI; // face the camera
       scene.add(vrm.scene);
+
+      // Snapshot rest-pose rotations
+      BONE_NAMES.forEach(name => {
+        const b = vrm.humanoid.getRawBoneNode(name);
+        if (b) {
+          bones[name] = b;
+          initRot[name] = { x: b.rotation.x, y: b.rotation.y, z: b.rotation.z };
+        }
+      });
+
       canvas.style.opacity = '1';
     },
     undefined,
@@ -429,8 +451,7 @@
 
   window.addEventListener('eva-state', e => {
     evaState = e.detail;
-    headTiltTgt = evaState === 'listening' ? 0.07 : 0;
-    headNodTgt  = evaState === 'thinking'  ? 0.05 : 0;
+    headTiltTgt = evaState === 'listening' ? 0.08 : 0;
     if (evaState !== 'speaking') { mouthPhase = 0; setExpr('aa', 0); }
   });
 
@@ -441,35 +462,65 @@
     const dt = clock.getDelta();
     const t  = clock.elapsedTime;
 
-    // Breath
-    breathT += dt * (evaState === 'speaking' ? 1.7 : 0.85);
-    const chest = vrm.humanoid.getRawBoneNode('upperChest')
-               || vrm.humanoid.getRawBoneNode('chest')
-               || vrm.humanoid.getRawBoneNode('spine');
-    if (chest) chest.rotation.x = Math.sin(breathT) * 0.009;
-
-    // Head pose
-    headTiltCur = lerp(headTiltCur, headTiltTgt, dt * 3.5);
-    const nodOsc = evaState === 'thinking' ? Math.sin(t * 1.9) * 0.035 : 0;
-    headNodCur   = lerp(headNodCur, headNodTgt + nodOsc, dt * 4);
-    const head   = vrm.humanoid.getRawBoneNode('head');
-    if (head) { head.rotation.z = headTiltCur; head.rotation.x = headNodCur; }
-
-    // Blink
+    // ── Blink (always) ──
     blinkTimer -= dt;
     if (blinkTimer <= 0 && blinkDir === 0) {
-      blinkDir      = 1;
-      blinkTimer    = blinkInterval;
+      blinkDir = 1; blinkTimer = blinkInterval;
       blinkInterval = 2 + Math.random() * 3.5;
     }
     if (blinkDir ===  1) { blinkVal += dt * 18; if (blinkVal >= 1) { blinkVal = 1; blinkDir = -1; } }
     if (blinkDir === -1) { blinkVal -= dt * 12; if (blinkVal <= 0) { blinkVal = 0; blinkDir =  0; } }
     setExpr('blink', blinkVal);
 
-    // Mouth
-    if (evaState === 'speaking') {
+    // ── Smooth head tilt ──
+    headTiltCur = lerp(headTiltCur, headTiltTgt, dt * 3.5);
+
+    // ── Per-state body animation ──
+    if (evaState === 'idle' || evaState === 'standby') {
+      // Gentle idle sway — low frequency, small amplitude
+      const sw  = Math.sin(t * 0.38) * 0.013;
+      const br  = Math.sin(t * 0.92) * 0.008;
+      const hlk = Math.sin(t * 0.21) * 0.055; // slow head look-around
+      addRot('hips',       0,              0,  -sw * 0.5);
+      addRot('spine',      br * 0.5,       0,   sw * 0.6);
+      addRot('chest',      br,             0,   sw);
+      addRot('upperChest', br * 0.5,       0,   sw * 0.4);
+      addRot('head',       Math.sin(t*0.17)*0.02, hlk, headTiltCur);
+
+    } else if (evaState === 'listening') {
+      // Lean slightly forward, head tilted attentively
+      const br = Math.sin(t * 0.92) * 0.006;
+      addRot('chest',      br + 0.055,     0,  0);
+      addRot('upperChest', br + 0.03,      0,  0);
+      addRot('spine',      br * 0.5 + 0.02,0,  0);
+      addRot('head',       0,              0,  headTiltCur);
+
+    } else if (evaState === 'thinking') {
+      // Head looks slightly down and to the side, body still
+      const nod = Math.sin(t * 1.8) * 0.025;
+      const br  = Math.sin(t * 0.92) * 0.006;
+      addRot('chest',      br + 0.03,      0,  0);
+      addRot('head',       0.06 + nod,     Math.sin(t * 0.5) * 0.07, headTiltCur);
+
+    } else if (evaState === 'speaking') {
+      // More energy: rhythmic body movement, gestural arm swings
+      const spd  = t * 1.3;
+      const sw   = Math.sin(spd) * 0.022;
+      const fwd  = 0.03 + Math.sin(t * 0.85) * 0.012;
+      const br   = Math.sin(t * 1.6) * 0.009;
+      // Mouth open/close
       mouthPhase += dt * 7.5;
-      setExpr('aa', Math.abs(Math.sin(mouthPhase)) * 0.6);
+      setExpr('aa', Math.abs(Math.sin(mouthPhase)) * 0.62);
+      // Body
+      addRot('hips',       0,              0,  -sw * 0.45);
+      addRot('spine',      fwd * 0.4,      0,   sw * 0.55);
+      addRot('chest',      fwd + br,       0,   sw);
+      addRot('upperChest', fwd * 0.5,      0,   sw * 0.6);
+      // Head nods naturally with speech rhythm
+      addRot('head', Math.sin(t * 2.1) * 0.025, Math.sin(t*1.4)*0.03, headTiltCur);
+      // Arm gestures — subtle alternating swing (X = forward/back)
+      addRot('leftUpperArm',  Math.sin(spd + 0.5) * 0.07, 0, 0);
+      addRot('rightUpperArm', Math.sin(spd + Math.PI + 0.5) * 0.07, 0, 0);
     }
 
     vrm.update(dt);
@@ -477,7 +528,7 @@
   })();
 
   window.addEventListener('resize', () => {
-    const w = charCol.clientWidth  || 260;
+    const w = charCol.clientWidth  || 280;
     const h = charCol.clientHeight || window.innerHeight;
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
