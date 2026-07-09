@@ -356,13 +356,19 @@
   }
 
   async function onRecordingStop() {
-    const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
-    const ext  = mediaRecorder.mimeType.includes('webm') ? 'webm' : 'ogg';
-    const fd   = new FormData();
-    fd.append('audio', blob, `rec.${ext}`);
+    const blob   = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+    const base64 = await new Promise(resolve => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result.split(',')[1]);
+      reader.readAsDataURL(blob);
+    });
 
     try {
-      const res  = await fetch('/whisper', { method: 'POST', body: fd });
+      const res  = await fetch('/whisper', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ audio: base64, mimeType: mediaRecorder.mimeType }),
+      });
       const data = await res.json();
       const text = (data.text || '').trim();
 
