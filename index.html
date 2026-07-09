@@ -297,121 +297,169 @@
     bubblesEl.innerHTML = '';
   }
 
-  // ── Speech Recognition ─────────────────────────────────────────────────────
-  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRec) setStatus('нужен Chrome для распознавания речи', false);
-
-  const recognition           = new SpeechRec();
-  recognition.lang            = 'ru-RU';
-  recognition.interimResults  = false;
-  recognition.maxAlternatives = 1;
-
-  let isListening   = false;
+  // ── State ─────────────────────────────────────────────────────────────────
   let wakeMode      = false;
   let awaitingQuery = false;
   let convTimer     = null;
+  let recTimer      = null;
+  let emptyCount    = 0;
 
+  // MediaRecorder
+  let isRecording   = false;
+  let mediaRecorder = null;
+  let audioChunks   = [];
+  let micStream     = null;
+
+  // Web Speech API (wake word only)
+  const SpeechRec   = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const recognition = SpeechRec ? new SpeechRec() : null;
+  let isListening   = false;
+  if (recognition) {
+    recognition.lang            = 'ru-RU';
+    recognition.continuous      = false;
+    recognition.interimResults  = false;
+    recognition.maxAlternatives = 1;
+  }
+
+  // ── MediaRecorder (Whisper) ───────────────────────────────────────────────
+  async function getMic() {
+    if (!micStream) micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    return micStream;
+  }
+
+  async function startRecording() {
+    try {
+      const stream = await getMic();
+      audioChunks  = [];
+      const mime   = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+                     ? 'audio/webm;codecs=opus' : 'audio/webm';
+      mediaRecorder = new MediaRecorder(stream, { mimeType: mime });
+      mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+      mediaRecorder.onstop = onRecordingStop;
+      mediaRecorder.start();
+      isRecording = true;
+      orb.classList.remove('standby', 'speaking');
+      orb.classList.add('listening');
+      setStatus('запись…', true);
+    } catch {
+      setStatus('нет доступа к микрофону', false);
+    }
+  }
+
+  function stopRecording() {
+    if (!mediaRecorder || mediaRecorder.state !== 'recording') return;
+    clearTimeout(recTimer);
+    isRecording = false;
+    mediaRecorder.stop();
+    orb.classList.remove('listening');
+    setStatus('распознаю…', true);
+  }
+
+  async function onRecordingStop() {
+    const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType });
+    const ext  = mediaRecorder.mimeType.includes('webm') ? 'webm' : 'ogg';
+    const fd   = new FormData();
+    fd.append('audio', blob, `rec.${ext}`);
+
+    try {
+      const res  = await fetch('/whisper', { method: 'POST', body: fd });
+      const data = await res.json();
+      const text = (data.text || '').trim();
+
+      if (text.length > 1) {
+        emptyCount = 0;
+        addBubble('user', text);
+        await sendToGroq(text);
+      } else {
+        emptyCount++;
+        if (awaitingQuery && emptyCount < 2) {
+          setStatus('не расслышала…', true);
+          startConversation();
+        } else {
+          emptyCount = 0;
+          endConversation();
+        }
+      }
+    } catch {
+      setStatus('ошибка распознавания', false);
+      endConversation();
+    }
+  }
+
+  // ── Orb click ─────────────────────────────────────────────────────────────
+  orb.addEventListener('click', () => {
+    if (wakeMode && !awaitingQuery) return;
+    if (isRecording) {
+      clearTimeout(recTimer);
+      stopRecording();
+    } else if (!orb.classList.contains('speaking')) {
+      startRecording();
+    }
+  });
+
+  // ── Conversation mode ──────────────────────────────────────────────────────
   function startConversation() {
     awaitingQuery = true;
     clearTimeout(convTimer);
-    orb.classList.remove('standby', 'speaking');
-    orb.classList.add('listening');
-    setStatus('слушаю…', true);
-    setTimeout(startListening, 400);
-    convTimer = setTimeout(endConversation, 12000);
+    clearTimeout(recTimer);
+    startRecording();
+    recTimer  = setTimeout(() => { if (isRecording) stopRecording(); }, 8000);
+    convTimer = setTimeout(endConversation, 30000);
   }
 
   function endConversation() {
     awaitingQuery = false;
+    emptyCount    = 0;
     clearTimeout(convTimer);
-    orb.classList.remove('listening');
+    clearTimeout(recTimer);
+    if (isRecording) stopRecording();
     if (wakeMode) {
       orb.classList.add('standby');
       setStatus('жду «Эва»…', false);
-      startListening();
+      startWakeListening();
     } else {
       setStatus('нажмите чтобы говорить', false);
     }
   }
 
-  function startListening() {
-    recognition.continuous     = false;
-    recognition.interimResults = false;
+  // ── Wake word (Web Speech API) ─────────────────────────────────────────────
+  function startWakeListening() {
+    if (!recognition || !wakeMode || awaitingQuery || isRecording || isListening) return;
     try { recognition.start(); } catch {}
   }
 
-  orb.addEventListener('click', () => {
-    if (wakeMode) return;
-    isListening ? recognition.stop() : startListening();
-  });
+  if (recognition) {
+    recognition.onstart = () => { isListening = true; };
 
-  recognition.onstart = () => {
-    isListening = true;
-    if (!wakeMode || awaitingQuery) {
-      orb.classList.remove('standby');
-      orb.classList.add('listening');
-      setStatus('слушаю…', true);
-    }
-  };
+    recognition.onend = () => {
+      isListening = false;
+      if (wakeMode && !awaitingQuery && !isRecording) {
+        setTimeout(startWakeListening, 100);
+      }
+    };
 
-  recognition.onend = () => {
-    isListening = false;
-    orb.classList.remove('listening');
+    recognition.onerror = () => {
+      isListening = false;
+      if (wakeMode && !awaitingQuery && !isRecording) {
+        setTimeout(startWakeListening, 600);
+      }
+    };
 
-    if (awaitingQuery) {
-      setTimeout(() => { if (awaitingQuery && !isListening) startListening(); }, 100);
-      return;
-    }
-
-    if (wakeMode && !orb.classList.contains('speaking')) {
-      orb.classList.add('standby');
-      setStatus('жду «Эва»…', false);
-      setTimeout(() => { if (wakeMode && !isListening) startListening(); }, 100);
-    } else if (!orb.classList.contains('speaking')) {
-      setStatus('нажмите чтобы говорить', false);
-    }
-  };
-
-  recognition.onerror = (e) => {
-    isListening = false;
-    orb.classList.remove('listening');
-    if (e.error !== 'no-speech' && e.error !== 'aborted') {
-      setStatus('ошибка: ' + e.error, false);
-    }
-    if (wakeMode) setTimeout(() => { if (wakeMode && !isListening) startListening(); }, 600);
-  };
-
-  recognition.onresult = async (e) => {
-    const text = e.results[e.resultIndex][0].transcript.trim();
-    if (!text) return;
-
-    if (awaitingQuery) {
-      clearTimeout(convTimer);
-      awaitingQuery = false;
-      addBubble('user', text);
-      await sendToGroq(text);
-      return;
-    }
-
-    if (wakeMode) {
+    recognition.onresult = async (e) => {
+      const text      = e.results[e.resultIndex][0].transcript.trim();
       const lower     = text.toLowerCase();
       const wakeFound = WAKE_WORDS.find(w => lower.includes(w));
-      if (wakeFound) {
-        const idx   = lower.indexOf(wakeFound);
-        const query = text.slice(idx + wakeFound.length).trim();
-        if (query.length > 1) {
-          addBubble('user', query);
-          await sendToGroq(query);
-        } else {
-          setTimeout(startConversation, 800);
-        }
+      if (!wakeFound) return;
+      const idx   = lower.indexOf(wakeFound);
+      const query = text.slice(idx + wakeFound.length).trim();
+      if (query.length > 1) {
+        addBubble('user', query);
+        await sendToGroq(query);
+      } else {
+        setTimeout(startConversation, 300);
       }
-      return;
-    }
-
-    addBubble('user', text);
-    await sendToGroq(text);
-  };
+    };
+  }
 
   // ── Wake word toggle ───────────────────────────────────────────────────────
   wakeBtn.addEventListener('click', () => {
@@ -422,10 +470,11 @@
     if (wakeMode) {
       orb.classList.add('standby');
       setStatus('жду «Эва»…', false);
-      startListening();
+      startWakeListening();
     } else {
       orb.classList.remove('standby');
-      try { recognition.stop(); } catch {}
+      if (recognition) try { recognition.stop(); } catch {}
+      if (isRecording) stopRecording();
       setStatus('нажмите чтобы говорить', false);
     }
   });
@@ -496,7 +545,7 @@
     utt.onend = () => {
       orb.classList.remove('speaking');
       if (wakeMode) {
-        startConversation();
+        setTimeout(startConversation, 300);
       } else {
         setStatus('нажмите чтобы говорить', false);
       }
