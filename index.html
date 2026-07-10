@@ -304,6 +304,31 @@
       100% { transform: scale(2.2); opacity: 0; }
     }
 
+    /* Model switcher overlay */
+    .model-switcher {
+      position: absolute;
+      top: 0.75rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      white-space: nowrap;
+    }
+    .model-switcher select {
+      background: #0e0d1ecc;
+      border: 1px solid #2a1a5e;
+      color: var(--accent-light);
+      border-radius: 12px;
+      padding: 0.22rem 0.55rem;
+      font-size: 0.64rem;
+      font-family: inherit;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      backdrop-filter: blur(6px);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .model-switcher select:hover { border-color: var(--accent); }
+
     /* On narrow screens hide character panel */
     @media (max-width: 620px) {
       .char-col { display: none; }
@@ -342,6 +367,7 @@
 <!-- Right: full-body character -->
 <div class="char-col" id="charCol">
   <canvas id="vrmCanvas"></canvas>
+  <div class="model-switcher" id="modelSwitcher"></div>
   <div class="orb-fallback" id="orbFallback">
     <div class="orb-fx">
       <div class="ring"></div>
@@ -360,8 +386,15 @@
   import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
   import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
 
-  const canvas  = document.getElementById('vrmCanvas');
-  const charCol = document.getElementById('charCol');
+  // ── Список моделей — добавь VRM файлы в папку /models/ и перечисли здесь ──
+  const MODELS = [
+    { name: 'Персонаж 1', url: './models/character.vrm' },
+    // { name: 'Имя модели', url: './models/ИмяФайла.vrm' },
+  ];
+
+  const canvas        = document.getElementById('vrmCanvas');
+  const charCol       = document.getElementById('charCol');
+  const modelSwitcher = document.getElementById('modelSwitcher');
 
   const W = charCol.clientWidth  || 280;
   const H = charCol.clientHeight || window.innerHeight;
@@ -426,24 +459,58 @@
   const loader = new GLTFLoader();
   loader.register(p => new VRMLoaderPlugin(p));
 
-  loader.load('./character.vrm',
-    gltf => {
-      vrm = gltf.userData.vrm;
-      try { VRMUtils.removeUnnecessaryJoints(vrm.scene); } catch {}
-      vrm.scene.rotation.y = Math.PI;
-      scene.add(vrm.scene);
+  // Build model selector dropdown
+  if (MODELS.length > 1) {
+    const sel = document.createElement('select');
+    MODELS.forEach((m, i) => {
+      const opt = document.createElement('option');
+      opt.value = i; opt.textContent = m.name;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', () => loadModel(MODELS[+sel.value].url));
+    modelSwitcher.appendChild(sel);
+  }
 
-      // Populate normalized bone references
-      NB.forEach(n => {
-        const b = vrm.humanoid.getNormalizedBoneNode(n);
-        if (b) nb[n] = b;
+  async function loadModel(url) {
+    // Unload previous VRM
+    if (vrm) {
+      scene.remove(vrm.scene);
+      vrm.scene.traverse(obj => {
+        if (obj.isMesh) {
+          obj.geometry?.dispose();
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+          mats.forEach(m => m?.dispose());
+        }
       });
+      vrm = null;
+    }
+    NB.forEach(n => delete nb[n]);
+    canvas.style.opacity = '0';
+    // Reset lerped arm values so no snap on new model
+    curArmLZ = curArmRZ = curArmLX = curArmRX = 0;
 
-      canvas.style.opacity = '1';
-    },
-    undefined,
-    () => { canvas.style.display = 'none'; }
-  );
+    return new Promise((resolve, reject) => {
+      loader.load(url,
+        gltf => {
+          vrm = gltf.userData.vrm;
+          try { VRMUtils.removeUnnecessaryJoints(vrm.scene); } catch {}
+          vrm.scene.rotation.y = Math.PI;
+          scene.add(vrm.scene);
+          NB.forEach(n => {
+            const b = vrm.humanoid.getNormalizedBoneNode(n);
+            if (b) nb[n] = b;
+          });
+          canvas.style.opacity = '1';
+          resolve(vrm);
+        },
+        undefined,
+        () => { canvas.style.display = 'none'; reject(); }
+      );
+    });
+  }
+
+  // Load first model on start
+  loadModel(MODELS[0].url);
 
   window.addEventListener('eva-state', e => {
     evaState = e.detail;
