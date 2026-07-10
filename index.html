@@ -514,6 +514,11 @@
   // Load first model on start
   loadModel(MODELS[0].url);
 
+  // Discard accumulated time when tab becomes visible again
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) clock.getDelta();
+  });
+
   window.addEventListener('eva-state', e => {
     evaState = e.detail;
     headTiltTgt = evaState === 'listening' ? 0.09 : 0;
@@ -524,7 +529,7 @@
     requestAnimationFrame(animate);
     if (!vrm) return;
 
-    const dt = clock.getDelta();
+    const dt = Math.min(clock.getDelta(), 0.05); // clamp: max 50ms per frame
     const t  = clock.elapsedTime;
 
     // ── Blink ──
