@@ -10,3 +10,8 @@
   from = "/whisper"
   to   = "/.netlify/functions/whisper"
   status = 200
+
+[[redirects]]
+  from = "/tts"
+  to   = "/.netlify/functions/tts"
+  status = 200

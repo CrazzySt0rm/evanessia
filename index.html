@@ -884,41 +884,52 @@
   });
 
   // ── TTS ───────────────────────────────────────────────────────────────────────
+  // Fish Audio voice ID — Young Female Russian
+  const FISH_VOICE_ID = '66485766aad041cbbe2ef58b080e33a6';
+
+  function onSpeakEnd() {
+    isSpeaking = false;
+    if (wakeMode) { setCharState('standby'); setTimeout(startConversation, 300); }
+    else { setCharState(''); setStatus('нажмите микрофон', false); }
+  }
+
+  async function speak(text) {
+    speechSynthesis.cancel();
+    setCharState('speaking');
+    setStatus('говорю…', true);
+    isSpeaking = true;
+
+    try {
+      const res = await fetch('/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, voiceId: FISH_VOICE_ID }),
+      });
+      if (!res.ok) throw new Error('tts error');
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => { URL.revokeObjectURL(url); onSpeakEnd(); };
+      audio.onerror = () => { URL.revokeObjectURL(url); speakFallback(text); };
+      audio.play().catch(() => speakFallback(text));
+    } catch {
+      speakFallback(text);
+    }
+  }
+
+  // Fallback to browser TTS if Fish Audio fails
   let voices = [];
   const loadVoices = () => { voices = speechSynthesis.getVoices(); };
   loadVoices();
   speechSynthesis.addEventListener('voiceschanged', loadVoices);
 
-  function pickVoice() {
-    const ruFemale = voices.find(v => v.lang.startsWith('ru') && /female|irina|tatyana|milena|svetlana/i.test(v.name));
-    return ruFemale || voices.find(v => v.lang.startsWith('ru')) || voices[0] || null;
-  }
-
-  function speak(text) {
-    speechSynthesis.cancel();
+  function speakFallback(text) {
     const utt = new SpeechSynthesisUtterance(text);
-    utt.lang  = 'ru-RU';
-    utt.rate  = 1.0;
-    utt.pitch = 1.1;
-    const v   = pickVoice();
+    utt.lang = 'ru-RU'; utt.rate = 1.0; utt.pitch = 1.1;
+    const ruFemale = voices.find(v => v.lang.startsWith('ru') && /female|irina|tatyana|milena|svetlana/i.test(v.name));
+    const v = ruFemale || voices.find(v => v.lang.startsWith('ru')) || voices[0];
     if (v) utt.voice = v;
-
-    utt.onstart = () => {
-      isSpeaking = true;
-      setCharState('speaking');
-      setStatus('говорю…', true);
-    };
-    utt.onend = () => {
-      isSpeaking = false;
-      if (wakeMode) {
-        setCharState('standby');
-        setTimeout(startConversation, 300);
-      } else {
-        setCharState('');
-        setStatus('нажмите микрофон', false);
-      }
-    };
-
+    utt.onend = onSpeakEnd;
     speechSynthesis.speak(utt);
   }
 
