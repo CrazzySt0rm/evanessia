@@ -424,6 +424,16 @@
   let vrm      = null;
   let mixer    = null;
   let evaState = 'idle';
+
+  const VRMA_MAP = {
+    idle:      './models/VRMA_06.vrma',
+    standby:   './models/VRMA_06.vrma',
+    listening: './models/VRMA_02.vrma',
+    thinking:  './models/VRMA_01.vrma',
+    speaking:  './models/VRMA_03.vrma',
+  };
+  let vrmActions       = {};
+  let currentVrmAction = null;
   const clock  = new THREE.Clock();
 
   // Normalized bones — vrm.update() reads these and writes to raw bones.
@@ -480,6 +490,7 @@
   async function loadModel(url) {
     // Dispose old animation mixer
     if (mixer) { mixer.stopAllAction(); mixer = null; }
+    vrmActions = {}; currentVrmAction = null;
 
     // Unload previous VRM
     if (vrm) {
@@ -509,18 +520,24 @@
             if (b) nb[n] = b;
           });
 
-          // Load idle VRMA animation
+          // Load VRMA animation for each state (deduplicate same URLs)
           try {
-            const vrmA = await new Promise((res, rej) =>
-              loader.load('./models/test.vrma', g => res(g), undefined, rej)
-            );
-            const anim = vrmA.userData.vrmAnimations?.[0];
-            if (anim) {
-              mixer = new THREE.AnimationMixer(vrm.scene);
-              const clip = createVRMAnimationClip(anim, vrm);
-              mixer.clipAction(clip).play();
+            mixer = new THREE.AnimationMixer(vrm.scene);
+            const loaded = {};
+            for (const [state, url] of Object.entries(VRMA_MAP)) {
+              if (loaded[url]) { vrmActions[state] = loaded[url]; continue; }
+              const gltf = await new Promise((res, rej) => loader.load(url, g => res(g), undefined, rej));
+              const anim = gltf.userData.vrmAnimations?.[0];
+              if (anim) {
+                const action = mixer.clipAction(createVRMAnimationClip(anim, vrm));
+                action.setLoop(THREE.LoopRepeat, Infinity);
+                vrmActions[state] = action;
+                loaded[url] = action;
+              }
             }
-          } catch { /* no VRMA, fall back to procedural idle */ }
+            const startAction = vrmActions[evaState] || vrmActions.idle;
+            if (startAction) { startAction.play(); currentVrmAction = startAction; }
+          } catch { /* no VRMA files, fall back to procedural */ }
 
           canvas.style.opacity = '1';
           resolve(vrm);
@@ -543,83 +560,100 @@
     evaState = e.detail;
     headTiltTgt = evaState === 'listening' ? 0.09 : 0;
     if (evaState !== 'speaking') { mouthPhase = 0; setExpr('aa', 0); }
+
+    // Crossfade to the new state's VRMA animation
+    if (mixer && vrmActions[evaState]) {
+      const next = vrmActions[evaState];
+      if (next !== currentVrmAction) {
+        next.reset().play();
+        if (currentVrmAction) currentVrmAction.crossFadeTo(next, 0.5, true);
+        currentVrmAction = next;
+      }
+    }
   });
 
   (function animate() {
     requestAnimationFrame(animate);
     if (!vrm) return;
 
-    const dt = Math.min(clock.getDelta(), 0.05); // clamp: max 50ms per frame
+    const dt = Math.min(clock.getDelta(), 0.05);
     const t  = clock.elapsedTime;
-
-    // ── Blink ──
-    blinkTimer -= dt;
-    if (blinkTimer <= 0 && blinkDir === 0) {
-      blinkDir = 1; blinkTimer = blinkInterval;
-      blinkInterval = 2 + Math.random() * 3.5;
-    }
-    if (blinkDir ===  1) { blinkVal += dt * 18; if (blinkVal >= 1) { blinkVal = 1; blinkDir = -1; } }
-    if (blinkDir === -1) { blinkVal -= dt * 12; if (blinkVal <= 0) { blinkVal = 0; blinkDir =  0; } }
-    setExpr('blink', blinkVal);
 
     headTiltCur = lerp(headTiltCur, headTiltTgt, dt * 3.5);
 
-    // ── Arm targets (computed every frame, applied via lerp below) ──
-    let tgtArmLZ, tgtArmRZ, tgtArmLX, tgtArmRX;
+    if (mixer) {
+      // ── VRMA mode: animations handle full body, we only add lip sync on top ──
+      mixer.update(dt);
+      if (evaState === 'speaking') {
+        mouthPhase += dt * 7.5;
+        setExpr('aa', Math.abs(Math.sin(mouthPhase)) * 0.62);
+      }
 
-    if (evaState === 'idle' || evaState === 'standby') {
-      if (mixer) mixer.update(dt); // face expressions from VRMA (eyes, smile, blink)
-      const sw  = Math.sin(t * 0.38) * 0.04;
-      const br  = Math.sin(t * 0.9)  * 0.009;
-      nb3('hips',       0,                      0, -sw * 0.4);
-      nb3('spine',      br * 0.5,               0,  sw * 0.55);
-      nb3('chest',      br,                     0,  sw * 0.8);
-      nb3('upperChest', br * 0.5,               0,  sw * 0.5);
-      nb3('head', Math.sin(t*0.17)*0.025, Math.sin(t*0.22)*0.07, headTiltCur);
-      tgtArmLZ =  ARM_REST + Math.sin(t*0.4)*0.03;
-      tgtArmRZ = -ARM_REST - Math.sin(t*0.4)*0.03;
-      tgtArmLX = 0; tgtArmRX = 0;
+    } else {
+      // ── Procedural fallback (no VRMA files available) ──
+      blinkTimer -= dt;
+      if (blinkTimer <= 0 && blinkDir === 0) {
+        blinkDir = 1; blinkTimer = blinkInterval;
+        blinkInterval = 2 + Math.random() * 3.5;
+      }
+      if (blinkDir ===  1) { blinkVal += dt * 18; if (blinkVal >= 1) { blinkVal = 1; blinkDir = -1; } }
+      if (blinkDir === -1) { blinkVal -= dt * 12; if (blinkVal <= 0) { blinkVal = 0; blinkDir =  0; } }
+      setExpr('blink', blinkVal);
 
-    } else if (evaState === 'listening') {
-      const br = Math.sin(t * 0.9) * 0.006;
-      nb3('spine',      br * 0.5 + 0.03, 0, 0);
-      nb3('chest',      br + 0.06,       0, 0);
-      nb3('upperChest', br + 0.03,       0, 0);
-      nb3('head',       0,               0, headTiltCur);
-      tgtArmLZ =  ARM_REST; tgtArmRZ = -ARM_REST;
-      tgtArmLX = 0; tgtArmRX = 0;
+      let tgtArmLZ, tgtArmRZ, tgtArmLX, tgtArmRX;
 
-    } else if (evaState === 'thinking') {
-      const nod = Math.sin(t * 1.8) * 0.028;
-      nb3('chest', 0.03, 0, 0);
-      nb3('head',  0.07 + nod, Math.sin(t*0.5)*0.08, headTiltCur);
-      tgtArmLZ =  ARM_REST; tgtArmRZ = -ARM_REST;
-      tgtArmLX = 0; tgtArmRX = 0;
+      if (evaState === 'idle' || evaState === 'standby') {
+        const sw  = Math.sin(t * 0.38) * 0.04;
+        const br  = Math.sin(t * 0.9)  * 0.009;
+        nb3('hips',       0,                      0, -sw * 0.4);
+        nb3('spine',      br * 0.5,               0,  sw * 0.55);
+        nb3('chest',      br,                     0,  sw * 0.8);
+        nb3('upperChest', br * 0.5,               0,  sw * 0.5);
+        nb3('head', Math.sin(t*0.17)*0.025, Math.sin(t*0.22)*0.07, headTiltCur);
+        tgtArmLZ =  ARM_REST + Math.sin(t*0.4)*0.03;
+        tgtArmRZ = -ARM_REST - Math.sin(t*0.4)*0.03;
+        tgtArmLX = 0; tgtArmRX = 0;
 
-    } else { // speaking
-      mouthPhase += dt * 7.5;
-      setExpr('aa', Math.abs(Math.sin(mouthPhase)) * 0.62);
-      const sw  = Math.sin(t * 1.35) * 0.045;
-      const fwd = 0.03 + Math.sin(t * 0.85) * 0.015;
-      nb3('hips',       0,                     0, -sw * 0.4);
-      nb3('spine',      fwd * 0.4,             0,  sw * 0.55);
-      nb3('chest',      fwd,                   0,  sw * 0.8);
-      nb3('upperChest', fwd * 0.5,             0,  sw * 0.5);
-      nb3('head', Math.sin(t*2.1)*0.028, Math.sin(t*1.4)*0.04, headTiltCur);
-      tgtArmLZ =  ARM_REST + Math.sin(t*1.6) * 0.05;
-      tgtArmRZ = -ARM_REST - Math.sin(t*1.6) * 0.05;
-      tgtArmLX =  Math.sin(t*1.6) * 0.1;
-      tgtArmRX =  Math.sin(t*1.6 + Math.PI) * 0.1;
+      } else if (evaState === 'listening') {
+        const br = Math.sin(t * 0.9) * 0.006;
+        nb3('spine',      br * 0.5 + 0.03, 0, 0);
+        nb3('chest',      br + 0.06,       0, 0);
+        nb3('upperChest', br + 0.03,       0, 0);
+        nb3('head',       0,               0, headTiltCur);
+        tgtArmLZ =  ARM_REST; tgtArmRZ = -ARM_REST;
+        tgtArmLX = 0; tgtArmRX = 0;
+
+      } else if (evaState === 'thinking') {
+        const nod = Math.sin(t * 1.8) * 0.028;
+        nb3('chest', 0.03, 0, 0);
+        nb3('head',  0.07 + nod, Math.sin(t*0.5)*0.08, headTiltCur);
+        tgtArmLZ =  ARM_REST; tgtArmRZ = -ARM_REST;
+        tgtArmLX = 0; tgtArmRX = 0;
+
+      } else { // speaking
+        mouthPhase += dt * 7.5;
+        setExpr('aa', Math.abs(Math.sin(mouthPhase)) * 0.62);
+        const sw  = Math.sin(t * 1.35) * 0.045;
+        const fwd = 0.03 + Math.sin(t * 0.85) * 0.015;
+        nb3('hips',       0,                     0, -sw * 0.4);
+        nb3('spine',      fwd * 0.4,             0,  sw * 0.55);
+        nb3('chest',      fwd,                   0,  sw * 0.8);
+        nb3('upperChest', fwd * 0.5,             0,  sw * 0.5);
+        nb3('head', Math.sin(t*2.1)*0.028, Math.sin(t*1.4)*0.04, headTiltCur);
+        tgtArmLZ =  ARM_REST + Math.sin(t*1.6) * 0.05;
+        tgtArmRZ = -ARM_REST - Math.sin(t*1.6) * 0.05;
+        tgtArmLX =  Math.sin(t*1.6) * 0.1;
+        tgtArmRX =  Math.sin(t*1.6 + Math.PI) * 0.1;
+      }
+
+      const armSpeed = dt * 4;
+      curArmLZ = lerp(curArmLZ, tgtArmLZ, armSpeed);
+      curArmRZ = lerp(curArmRZ, tgtArmRZ, armSpeed);
+      curArmLX = lerp(curArmLX, tgtArmLX, armSpeed);
+      curArmRX = lerp(curArmRX, tgtArmRX, armSpeed);
+      nb3('leftUpperArm',  curArmLX, 0, curArmLZ);
+      nb3('rightUpperArm', curArmRX, 0, curArmRZ);
     }
-
-    // Smooth arm transitions — lerp toward targets to avoid snapping
-    const armSpeed = dt * 4;
-    curArmLZ = lerp(curArmLZ, tgtArmLZ, armSpeed);
-    curArmRZ = lerp(curArmRZ, tgtArmRZ, armSpeed);
-    curArmLX = lerp(curArmLX, tgtArmLX, armSpeed);
-    curArmRX = lerp(curArmRX, tgtArmRX, armSpeed);
-    nb3('leftUpperArm',  curArmLX, 0, curArmLZ);
-    nb3('rightUpperArm', curArmRX, 0, curArmRZ);
 
     vrm.update(dt);
     renderer.render(scene, camera);
