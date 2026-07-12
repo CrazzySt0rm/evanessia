@@ -425,15 +425,33 @@
   let mixer    = null;
   let evaState = 'idle';
 
-  const VRMA_MAP = {
-    idle:      './models/VRMA_06.vrma',
-    standby:   './models/VRMA_06.vrma',
-    listening: './models/VRMA_02.vrma',
-    thinking:  './models/VRMA_01.vrma',
-    speaking:  './models/VRMA_03.vrma',
+  // Each state gets a playlist of VRMA animations to rotate through
+  const VRMA_SETS = {
+    idle:      ['./models/VRMA_06.vrma', './models/VRMA_01.vrma', './models/VRMA_05.vrma'],
+    standby:   ['./models/VRMA_06.vrma', './models/VRMA_01.vrma'],
+    listening: ['./models/VRMA_02.vrma'],
+    thinking:  ['./models/VRMA_01.vrma', './models/VRMA_07.vrma'],
+    speaking:  ['./models/VRMA_03.vrma', './models/VRMA_04.vrma'],
   };
-  let vrmActions       = {};
+  let allVrmaActions   = {}; // url → AnimationAction
+  let stateVrmaIdx     = {}; // state → current index in its playlist
   let currentVrmAction = null;
+  let idleRotateTimer  = 0;
+  const IDLE_ROTATE_SEC = 12;
+
+  function getVrmaAction(state) {
+    const set = VRMA_SETS[state];
+    if (!set?.length) return null;
+    const idx = (stateVrmaIdx[state] ?? 0) % set.length;
+    return allVrmaActions[set[idx]] ?? null;
+  }
+
+  function switchVrmaAction(action) {
+    if (!mixer || !action || action === currentVrmAction) return;
+    action.reset().play();
+    if (currentVrmAction) currentVrmAction.crossFadeTo(action, 0.5, true);
+    currentVrmAction = action;
+  }
   const clock  = new THREE.Clock();
 
   // Normalized bones — vrm.update() reads these and writes to raw bones.
@@ -490,7 +508,7 @@
   async function loadModel(url) {
     // Dispose old animation mixer
     if (mixer) { mixer.stopAllAction(); mixer = null; }
-    vrmActions = {}; currentVrmAction = null;
+    allVrmaActions = {}; stateVrmaIdx = {}; currentVrmAction = null; idleRotateTimer = 0;
 
     // Unload previous VRM
     if (vrm) {
@@ -520,24 +538,24 @@
             if (b) nb[n] = b;
           });
 
-          // Load VRMA animation for each state (deduplicate same URLs)
+          // Load all unique VRMA files, then start the current state's animation
           try {
             mixer = new THREE.AnimationMixer(vrm.scene);
-            const loaded = {};
-            for (const [state, url] of Object.entries(VRMA_MAP)) {
-              if (loaded[url]) { vrmActions[state] = loaded[url]; continue; }
-              const gltf = await new Promise((res, rej) => loader.load(url, g => res(g), undefined, rej));
-              const anim = gltf.userData.vrmAnimations?.[0];
-              if (anim) {
-                const action = mixer.clipAction(createVRMAnimationClip(anim, vrm));
-                action.setLoop(THREE.LoopRepeat, Infinity);
-                vrmActions[state] = action;
-                loaded[url] = action;
-              }
+            const allUrls = [...new Set(Object.values(VRMA_SETS).flat())];
+            for (const url of allUrls) {
+              try {
+                const gltf = await new Promise((res, rej) => loader.load(url, g => res(g), undefined, rej));
+                const anim = gltf.userData.vrmAnimations?.[0];
+                if (anim) {
+                  const action = mixer.clipAction(createVRMAnimationClip(anim, vrm));
+                  action.setLoop(THREE.LoopRepeat, Infinity);
+                  allVrmaActions[url] = action;
+                }
+              } catch { /* skip missing file */ }
             }
-            const startAction = vrmActions[evaState] || vrmActions.idle;
+            const startAction = getVrmaAction(evaState) ?? getVrmaAction('idle');
             if (startAction) { startAction.play(); currentVrmAction = startAction; }
-          } catch { /* no VRMA files, fall back to procedural */ }
+          } catch { /* no VRMA, fall back to procedural */ }
 
           canvas.style.opacity = '1';
           document.getElementById('orbFallback').style.display = 'none';
@@ -562,15 +580,13 @@
     headTiltTgt = evaState === 'listening' ? 0.09 : 0;
     if (evaState !== 'speaking') { mouthPhase = 0; setExpr('aa', 0); }
 
-    // Crossfade to the new state's VRMA animation
-    if (mixer && vrmActions[evaState]) {
-      const next = vrmActions[evaState];
-      if (next !== currentVrmAction) {
-        next.reset().play();
-        if (currentVrmAction) currentVrmAction.crossFadeTo(next, 0.5, true);
-        currentVrmAction = next;
-      }
+    // Pick a random animation from this state's playlist, then crossfade
+    if (VRMA_SETS[evaState]) {
+      const set = VRMA_SETS[evaState];
+      stateVrmaIdx[evaState] = Math.floor(Math.random() * set.length);
     }
+    idleRotateTimer = 0;
+    switchVrmaAction(getVrmaAction(evaState));
   });
 
   (function animate() {
@@ -585,6 +601,18 @@
     if (mixer) {
       // ── VRMA mode: animations handle full body, we only add lip sync on top ──
       mixer.update(dt);
+
+      // Rotate idle animation every IDLE_ROTATE_SEC seconds
+      if (evaState === 'idle' || evaState === 'standby') {
+        idleRotateTimer += dt;
+        if (idleRotateTimer >= IDLE_ROTATE_SEC) {
+          idleRotateTimer = 0;
+          const set = VRMA_SETS[evaState];
+          stateVrmaIdx[evaState] = ((stateVrmaIdx[evaState] ?? 0) + 1) % set.length;
+          switchVrmaAction(getVrmaAction(evaState));
+        }
+      }
+
       if (evaState === 'speaking') {
         mouthPhase += dt * 7.5;
         setExpr('aa', Math.abs(Math.sin(mouthPhase)) * 0.62);
