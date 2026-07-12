@@ -540,6 +540,7 @@
           } catch { /* no VRMA files, fall back to procedural */ }
 
           canvas.style.opacity = '1';
+          document.getElementById('orbFallback').style.display = 'none';
           resolve(vrm);
         },
         undefined,
