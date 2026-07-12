@@ -8,9 +8,10 @@
   <script type="importmap">
   {
     "imports": {
-      "three":            "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.min.js",
-      "three/addons/":    "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/",
-      "@pixiv/three-vrm": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@2.1.2/lib/three-vrm.module.min.js"
+      "three":                      "https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.min.js",
+      "three/addons/":              "https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/",
+      "@pixiv/three-vrm":           "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm@2.1.2/lib/three-vrm.module.min.js",
+      "@pixiv/three-vrm-animation": "https://cdn.jsdelivr.net/npm/@pixiv/three-vrm-animation@2.1.2/lib/three-vrm-animation.module.min.js"
     }
   }
   </script>
@@ -385,6 +386,7 @@
   import * as THREE from 'three';
   import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
   import { VRMLoaderPlugin, VRMUtils } from '@pixiv/three-vrm';
+  import { VRMAnimationLoaderPlugin, createVRMAnimationClip } from '@pixiv/three-vrm-animation';
 
   // ── Список моделей — добавь VRM файлы в папку /models/ и перечисли здесь ──
   const MODELS = [
@@ -420,6 +422,7 @@
   fill.position.set(2, 0.5, 1); scene.add(fill);
 
   let vrm      = null;
+  let mixer    = null;
   let evaState = 'idle';
   const clock  = new THREE.Clock();
 
@@ -460,6 +463,7 @@
 
   const loader = new GLTFLoader();
   loader.register(p => new VRMLoaderPlugin(p));
+  loader.register(p => new VRMAnimationLoaderPlugin(p));
 
   // Build model selector dropdown
   if (MODELS.length > 1) {
@@ -474,6 +478,9 @@
   }
 
   async function loadModel(url) {
+    // Dispose old animation mixer
+    if (mixer) { mixer.stopAllAction(); mixer = null; }
+
     // Unload previous VRM
     if (vrm) {
       scene.remove(vrm.scene);
@@ -488,12 +495,11 @@
     }
     NB.forEach(n => delete nb[n]);
     canvas.style.opacity = '0';
-    // Reset lerped arm values so no snap on new model
     curArmLZ = curArmRZ = curArmLX = curArmRX = 0;
 
     return new Promise((resolve, reject) => {
       loader.load(url,
-        gltf => {
+        async gltf => {
           vrm = gltf.userData.vrm;
           try { VRMUtils.removeUnnecessaryJoints(vrm.scene); } catch {}
           vrm.scene.rotation.y = Math.PI;
@@ -502,6 +508,20 @@
             const b = vrm.humanoid.getNormalizedBoneNode(n);
             if (b) nb[n] = b;
           });
+
+          // Load idle VRMA animation
+          try {
+            const vrmA = await new Promise((res, rej) =>
+              loader.load('./models/test.vrma', g => res(g), undefined, rej)
+            );
+            const anim = vrmA.userData.vrmAnimations?.[0];
+            if (anim) {
+              mixer = new THREE.AnimationMixer(vrm.scene);
+              const clip = createVRMAnimationClip(anim, vrm);
+              mixer.clipAction(clip).play();
+            }
+          } catch { /* no VRMA, fall back to procedural idle */ }
+
           canvas.style.opacity = '1';
           resolve(vrm);
         },
@@ -548,13 +568,17 @@
     let tgtArmLZ, tgtArmRZ, tgtArmLX, tgtArmRX;
 
     if (evaState === 'idle' || evaState === 'standby') {
-      const sw  = Math.sin(t * 0.38) * 0.04;
-      const br  = Math.sin(t * 0.9)  * 0.009;
-      nb3('hips',       0,                      0, -sw * 0.4);
-      nb3('spine',      br * 0.5,               0,  sw * 0.55);
-      nb3('chest',      br,                     0,  sw * 0.8);
-      nb3('upperChest', br * 0.5,               0,  sw * 0.5);
-      nb3('head', Math.sin(t*0.17)*0.025, Math.sin(t*0.22)*0.07, headTiltCur);
+      if (mixer) {
+        mixer.update(dt);
+      } else {
+        const sw  = Math.sin(t * 0.38) * 0.04;
+        const br  = Math.sin(t * 0.9)  * 0.009;
+        nb3('hips',       0,                      0, -sw * 0.4);
+        nb3('spine',      br * 0.5,               0,  sw * 0.55);
+        nb3('chest',      br,                     0,  sw * 0.8);
+        nb3('upperChest', br * 0.5,               0,  sw * 0.5);
+        nb3('head', Math.sin(t*0.17)*0.025, Math.sin(t*0.22)*0.07, headTiltCur);
+      }
       tgtArmLZ =  ARM_REST + Math.sin(t*0.4)*0.03;
       tgtArmRZ = -ARM_REST - Math.sin(t*0.4)*0.03;
       tgtArmLX = 0; tgtArmRX = 0;
