@@ -884,13 +884,37 @@
   });
 
   // ── TTS ───────────────────────────────────────────────────────────────────────
-  // Fish Audio voice ID — Young Female Russian
   const FISH_VOICE_ID = '66485766aad041cbbe2ef58b080e33a6';
 
   function onSpeakEnd() {
     isSpeaking = false;
     if (wakeMode) { setCharState('standby'); setTimeout(startConversation, 300); }
     else { setCharState(''); setStatus('нажмите микрофон', false); }
+  }
+
+  // Split reply into sentences so we can pipeline TTS requests:
+  // fetch sentence N+1 while sentence N is playing → hides latency after the first sentence
+  function splitSentences(text) {
+    const parts = text.match(/[^.!?]+[.!?]+/g)?.map(s => s.trim()).filter(Boolean);
+    return parts && parts.length > 1 ? parts : [text];
+  }
+
+  function fetchTtsBlob(chunk) {
+    return fetch('/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: chunk, voiceId: FISH_VOICE_ID }),
+    }).then(r => { if (!r.ok) throw new Error('tts'); return r.blob(); });
+  }
+
+  function playBlob(blob) {
+    return new Promise((resolve, reject) => {
+      const url   = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+      audio.onerror = () => { URL.revokeObjectURL(url); reject(); };
+      audio.play().catch(reject);
+    });
   }
 
   async function speak(text) {
@@ -900,18 +924,16 @@
     isSpeaking = true;
 
     try {
-      const res = await fetch('/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text, voiceId: FISH_VOICE_ID }),
-      });
-      if (!res.ok) throw new Error('tts error');
-      const blob = await res.blob();
-      const url  = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.onended = () => { URL.revokeObjectURL(url); onSpeakEnd(); };
-      audio.onerror = () => { URL.revokeObjectURL(url); speakFallback(text); };
-      audio.play().catch(() => speakFallback(text));
+      const sentences = splitSentences(text);
+      let nextFetch   = fetchTtsBlob(sentences[0]); // start fetching immediately
+
+      for (let i = 0; i < sentences.length; i++) {
+        const blob = await nextFetch;
+        // Prefetch next sentence while current one is about to play
+        if (i + 1 < sentences.length) nextFetch = fetchTtsBlob(sentences[i + 1]);
+        await playBlob(blob);
+      }
+      onSpeakEnd();
     } catch {
       speakFallback(text);
     }
