@@ -213,7 +213,7 @@
 
     /* ── Character column (right) ── */
     .char-col {
-      width: clamp(220px, 28vw, 340px);
+      width: clamp(260px, 36vw, 460px);
       position: relative;
       flex-shrink: 0;
       background: radial-gradient(ellipse at 50% 65%, #110826, #07070f);
@@ -409,7 +409,7 @@
   renderer.outputColorSpace = THREE.SRGBColorSpace;
 
   const scene  = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(28, W / H, 0.01, 20);
+  const camera = new THREE.PerspectiveCamera(36, W / H, 0.01, 20);
   camera.position.set(0, 0.95, 5.2);
   camera.lookAt(0, 0.85, 0);
 
