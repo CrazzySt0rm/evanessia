@@ -446,10 +446,11 @@
     return allVrmaActions[set[idx]] ?? null;
   }
 
-  function switchVrmaAction(action, duration = 0.9) {
-    if (!mixer || !action || action === currentVrmAction) return;
+  function switchVrmaAction(action, duration = 0.9, force = false) {
+    if (!mixer || !action) return;
+    if (action === currentVrmAction && !force) return;
     action.reset().play();
-    if (currentVrmAction) currentVrmAction.crossFadeTo(action, duration, true);
+    if (currentVrmAction && currentVrmAction !== action) currentVrmAction.crossFadeTo(action, duration, true);
     currentVrmAction = action;
   }
   const clock  = new THREE.Clock();
@@ -541,6 +542,16 @@
           // Load all unique VRMA files, then start the current state's animation
           try {
             mixer = new THREE.AnimationMixer(vrm.scene);
+
+            // On animation end: crossfade to next in playlist instead of looping
+            mixer.addEventListener('finished', e => {
+              if (e.action !== currentVrmAction) return;
+              const set = VRMA_SETS[evaState];
+              if (!set?.length) return;
+              stateVrmaIdx[evaState] = ((stateVrmaIdx[evaState] ?? 0) + 1) % set.length;
+              switchVrmaAction(getVrmaAction(evaState), 0.8, true);
+            });
+
             const allUrls = [...new Set(Object.values(VRMA_SETS).flat())];
             for (const url of allUrls) {
               try {
@@ -548,7 +559,8 @@
                 const anim = gltf.userData.vrmAnimations?.[0];
                 if (anim) {
                   const action = mixer.clipAction(createVRMAnimationClip(anim, vrm));
-                  action.setLoop(THREE.LoopRepeat, Infinity);
+                  action.setLoop(THREE.LoopOnce, 1);
+                  action.clampWhenFinished = true;
                   allVrmaActions[url] = action;
                 }
               } catch { /* skip missing file */ }
@@ -601,17 +613,6 @@
     if (mixer) {
       // ── VRMA mode: animations handle full body, we only add lip sync on top ──
       mixer.update(dt);
-
-      // Rotate idle animation every IDLE_ROTATE_SEC seconds
-      if (evaState === 'idle' || evaState === 'standby') {
-        idleRotateTimer += dt;
-        if (idleRotateTimer >= IDLE_ROTATE_SEC) {
-          idleRotateTimer = 0;
-          const set = VRMA_SETS[evaState];
-          stateVrmaIdx[evaState] = ((stateVrmaIdx[evaState] ?? 0) + 1) % set.length;
-          switchVrmaAction(getVrmaAction(evaState), 1.5);
-        }
-      }
 
       if (evaState === 'speaking') {
         mouthPhase += dt * 7.5;
