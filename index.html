@@ -333,6 +333,10 @@
       transform: translateX(-50%);
       z-index: 10;
       white-space: nowrap;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.3rem;
     }
     .model-switcher select {
       background: #0e0d1ecc;
@@ -990,7 +994,26 @@
   });
 
   // ── TTS ───────────────────────────────────────────────────────────────────────
-  const FISH_VOICE_ID = '66485766aad041cbbe2ef58b080e33a6';
+  // ── Голоса Fish Audio — добавляй новые сюда ──────────────────────────────────
+  const VOICES = [
+    { name: 'Молодая (RU)', id: '66485766aad041cbbe2ef58b080e33a6' },
+    // { name: 'Голос 2', id: 'ВСТАВЬ_ID_СЮДА' },
+  ];
+  let currentVoiceId = VOICES[0].id;
+
+  // Строим селектор голосов под переключателем моделей
+  (function buildVoiceSelector() {
+    if (VOICES.length < 2) return;
+    const switcher = document.getElementById('modelSwitcher');
+    const sel = document.createElement('select');
+    VOICES.forEach((v, i) => {
+      const opt = document.createElement('option');
+      opt.value = v.id; opt.textContent = v.name;
+      sel.appendChild(opt);
+    });
+    sel.addEventListener('change', () => { currentVoiceId = sel.value; });
+    switcher.appendChild(sel);
+  })();
 
   function onSpeakEnd() {
     isSpeaking = false;
@@ -1009,7 +1032,7 @@
     return fetch('/tts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text: chunk, voiceId: FISH_VOICE_ID }),
+      body: JSON.stringify({ text: chunk, voiceId: currentVoiceId }),
     }).then(r => { if (!r.ok) throw new Error('tts'); return r.blob(); });
   }
 
