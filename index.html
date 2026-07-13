@@ -136,7 +136,25 @@
       color: var(--text);
       border: 1px solid var(--border);
       border-bottom-left-radius: 4px;
+      position: relative;
+      padding-bottom: 1.4rem;
     }
+
+    .bubble-replay {
+      position: absolute;
+      bottom: 0.3rem;
+      right: 0.45rem;
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 2px;
+      opacity: 0;
+      transition: opacity 0.18s;
+      line-height: 0;
+    }
+    .bubble-replay svg { width: 13px; height: 13px; fill: var(--accent-light); display: block; }
+    .bubble.assistant:hover .bubble-replay { opacity: 0.5; }
+    .bubble-replay:hover { opacity: 1 !important; }
 
     @keyframes fadeUp {
       from { opacity: 0; transform: translateY(6px); }
@@ -349,7 +367,6 @@
 
   <div class="controls">
     <button class="ctrl-btn" id="wakeBtn">⌀ слово-пробуждение</button>
-    <button class="ctrl-btn" id="replayBtn" disabled>↺ повторить</button>
     <button class="ctrl-btn" id="clearBtn">очистить историю</button>
   </div>
 
@@ -705,7 +722,6 @@
   const statusEl  = document.getElementById('status');
   const bubblesEl = document.getElementById('bubbles');
   const wakeBtn   = document.getElementById('wakeBtn');
-  const replayBtn = document.getElementById('replayBtn');
   const clearBtn  = document.getElementById('clearBtn');
   const textInput = document.getElementById('textInput');
   const sendBtn   = document.getElementById('sendBtn');
@@ -932,9 +948,6 @@
   });
 
   clearBtn.addEventListener('click', clearHistory);
-  replayBtn.addEventListener('click', () => {
-    if (lastReply && !isSpeaking) speak(lastReply);
-  });
 
   // ── Groq API ──────────────────────────────────────────────────────────────────
   async function sendToGroq(userText) {
@@ -953,8 +966,6 @@
       history.push({ role: 'assistant', content: reply });
       saveHistory();
       addBubble('assistant', reply);
-      lastReply = reply;
-      replayBtn.disabled = false;
       speak(reply);
     } catch {
       setCharState(wakeMode ? 'standby' : '');
@@ -1059,6 +1070,16 @@
     div.className = `bubble ${role}`;
     if (!animate) div.style.animation = 'none';
     div.textContent = text;
+
+    if (role === 'assistant') {
+      const btn = document.createElement('button');
+      btn.className = 'bubble-replay';
+      btn.title = 'Прослушать снова';
+      btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+      btn.addEventListener('click', () => { if (!isSpeaking) speak(text); });
+      div.appendChild(btn);
+    }
+
     bubblesEl.appendChild(div);
     bubblesEl.scrollTop = bubblesEl.scrollHeight;
   }
