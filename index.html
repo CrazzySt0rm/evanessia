@@ -451,9 +451,9 @@
 
   // Each state gets a playlist of VRMA animations to rotate through
   const VRMA_SETS = {
-    idle:      ['./models/idle_loop.vrma', './models/standard_idle.vrma', './models/VRMA_01.vrma'],
-    standby:   ['./models/idle_loop.vrma', './models/standard_idle.vrma', './models/VRMA_06.vrma'],
-    listening: ['./models/idle_loop.vrma', './models/VRMA_02.vrma'],
+    idle:      ['./models/idle_loop.vrma'],
+    standby:   ['./models/standard_idle.vrma', './models/VRMA_06.vrma'],
+    listening: ['./models/idle_loop.vrma'],
     thinking:  ['./models/VRMA_01.vrma', './models/VRMA_07.vrma'],
     speaking:  ['./models/VRMA_03.vrma', './models/VRMA_04.vrma', './models/VRMA_01.vrma', './models/VRMA_05.vrma'],
   };
@@ -582,9 +582,15 @@
                 const gltf = await new Promise((res, rej) => loader.load(url, g => res(g), undefined, rej));
                 const anim = gltf.userData.vrmAnimations?.[0];
                 if (anim) {
-                  const action = mixer.clipAction(createVRMAnimationClip(anim, vrm));
-                  action.setLoop(THREE.LoopOnce, 1);
-                  action.clampWhenFinished = true;
+                  const clip = createVRMAnimationClip(anim, vrm);
+                  // Strip hips world-position tracks to prevent root-motion sliding between animations
+                  if (nb.hips) {
+                    clip.tracks = clip.tracks.filter(t => t.name !== `${nb.hips.name}.position`);
+                  }
+                  const isLoop = url.includes('idle_loop');
+                  const action = mixer.clipAction(clip);
+                  action.setLoop(isLoop ? THREE.LoopRepeat : THREE.LoopOnce, isLoop ? Infinity : 1);
+                  if (!isLoop) action.clampWhenFinished = true;
                   allVrmaActions[url] = action;
                 }
               } catch { /* skip missing file */ }
@@ -635,8 +641,25 @@
     headTiltCur = lerp(headTiltCur, headTiltTgt, dt * 3.5);
 
     if (mixer) {
-      // ── VRMA mode: animations handle full body, we only add lip sync on top ──
+      // ── VRMA mode: animations handle full body, we layer blink + life on top ──
       mixer.update(dt);
+
+      // Blink (expression — independent of bone animation)
+      blinkTimer -= dt;
+      if (blinkTimer <= 0 && blinkDir === 0) {
+        blinkDir = 1; blinkTimer = blinkInterval;
+        blinkInterval = 2 + Math.random() * 3.5;
+      }
+      if (blinkDir ===  1) { blinkVal += dt * 18; if (blinkVal >= 1) { blinkVal = 1; blinkDir = -1; } }
+      if (blinkDir === -1) { blinkVal -= dt * 12; if (blinkVal <= 0) { blinkVal = 0; blinkDir =  0; } }
+      setExpr('blink', blinkVal);
+
+      // Additive procedural breathing + sway on top of VRMA base pose (+=, not set)
+      const breathe = Math.sin(t * 0.9)  * 0.008;
+      const sway    = Math.sin(t * 0.38) * 0.010;
+      if (nb.chest) { nb.chest.rotation.x += breathe; nb.chest.rotation.z += sway * 0.7; }
+      if (nb.spine) { nb.spine.rotation.x += breathe * 0.4; nb.spine.rotation.z += sway * 0.4; }
+      if (nb.head)  { nb.head.rotation.y  += Math.sin(t * 0.22) * 0.025; nb.head.rotation.z += headTiltCur; }
 
       if (evaState === 'speaking') {
         mouthPhase += dt * 7.5;
