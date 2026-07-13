@@ -349,6 +349,7 @@
 
   <div class="controls">
     <button class="ctrl-btn" id="wakeBtn">⌀ слово-пробуждение</button>
+    <button class="ctrl-btn" id="replayBtn" disabled>↺ повторить</button>
     <button class="ctrl-btn" id="clearBtn">очистить историю</button>
   </div>
 
@@ -410,7 +411,7 @@
 
   const scene  = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(36, W / H, 0.01, 20);
-  camera.position.set(0, 0.95, 5.2);
+  camera.position.set(0, 0.95, 4.2);
   camera.lookAt(0, 0.85, 0);
 
   scene.add(new THREE.AmbientLight(0x9988dd, 0.6));
@@ -704,6 +705,7 @@
   const statusEl  = document.getElementById('status');
   const bubblesEl = document.getElementById('bubbles');
   const wakeBtn   = document.getElementById('wakeBtn');
+  const replayBtn = document.getElementById('replayBtn');
   const clearBtn  = document.getElementById('clearBtn');
   const textInput = document.getElementById('textInput');
   const sendBtn   = document.getElementById('sendBtn');
@@ -723,6 +725,7 @@
   let isSpeaking    = false;
   let convTimer     = null;
   let recTimer      = null;
+  let lastReply     = null;
   let emptyCount    = 0;
 
   function setCharState(s) {
@@ -929,6 +932,9 @@
   });
 
   clearBtn.addEventListener('click', clearHistory);
+  replayBtn.addEventListener('click', () => {
+    if (lastReply && !isSpeaking) speak(lastReply);
+  });
 
   // ── Groq API ──────────────────────────────────────────────────────────────────
   async function sendToGroq(userText) {
@@ -947,6 +953,8 @@
       history.push({ role: 'assistant', content: reply });
       saveHistory();
       addBubble('assistant', reply);
+      lastReply = reply;
+      replayBtn.disabled = false;
       speak(reply);
     } catch {
       setCharState(wakeMode ? 'standby' : '');
