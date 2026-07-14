@@ -355,6 +355,25 @@
     .model-switcher select:hover { border-color: var(--accent); }
 
     /* On narrow screens hide character panel */
+    .vrm-credit {
+      position: absolute;
+      bottom: 8px;
+      left: 0; right: 0;
+      text-align: center;
+      font-size: 0.58rem;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      opacity: 0.5;
+      z-index: 4;
+      pointer-events: none;
+    }
+    .vrm-credit a {
+      color: inherit;
+      text-decoration: none;
+      pointer-events: all;
+    }
+    .vrm-credit a:hover { opacity: 0.9; color: var(--accent-light); }
+
     @media (max-width: 620px) {
       .char-col { display: none; }
     }
@@ -393,6 +412,7 @@
 <div class="char-col" id="charCol">
   <canvas id="vrmCanvas"></canvas>
   <div class="model-switcher" id="modelSwitcher"></div>
+  <div class="vrm-credit"><a href="https://hub.vroid.com" target="_blank" rel="noopener">Модели: VRoid Hub</a></div>
   <div class="orb-fallback" id="orbFallback">
     <div class="orb-fx">
       <div class="ring"></div>
