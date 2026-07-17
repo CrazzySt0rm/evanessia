@@ -1394,9 +1394,9 @@
       });
       clearTimeout(timeout);
       const data  = await res.json();
-      if (data.error) throw new Error(data.error.message || 'API error');
+      if (data.error) { console.error('[Groq error]', data.error); throw new Error(data.error.message || 'API error'); }
       let reply = data.choices?.[0]?.message?.content;
-      if (!reply) throw new Error('empty');
+      if (!reply) { console.error('[Groq empty]', data); throw new Error('empty'); }
 
       // Extract emotion tag and apply to VRM
       const emoMatch = reply.match(/^\[e:(\w+)\]\s*/);
