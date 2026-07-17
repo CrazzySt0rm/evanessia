@@ -549,6 +549,7 @@
     <button class="ctrl-btn" id="clearBtn">очистить историю</button>
     <button class="ctrl-btn" id="themeBtn">☀ светлая</button>
     <button class="ctrl-btn" id="personalityBtn">⚙ личность</button>
+    <button class="ctrl-btn" id="memoryBtn">🧠 память</button>
   </div>
 
   <div class="modal-overlay" id="personalityModal">
@@ -559,6 +560,18 @@
       <div class="modal-actions">
         <button class="ctrl-btn" id="personalityReset">по умолчанию</button>
         <button class="ctrl-btn on" id="personalitySave">сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="memoryModal">
+    <div class="modal-box">
+      <div class="modal-title">Долгосрочная память</div>
+      <div class="modal-hint">Эванессия обновляет это автоматически каждые несколько сообщений. Можешь редактировать или очистить.</div>
+      <textarea class="modal-textarea" id="memoryText" rows="8" spellcheck="false" placeholder="Пока ничего не запомнила..."></textarea>
+      <div class="modal-actions">
+        <button class="ctrl-btn" id="memoryClear">очистить</button>
+        <button class="ctrl-btn on" id="memorySave">сохранить</button>
       </div>
     </div>
   </div>
@@ -971,7 +984,17 @@
 
   const DEFAULT_PERSONALITY = 'Ты — Evanessia, умный голосовой ассистент. Отвечай кратко, дружелюбно и по-русски. Избегай длинных перечислений — говори живым языком, как в разговоре.';
   let personalityContent = localStorage.getItem('eva-personality') || DEFAULT_PERSONALITY;
-  const getSystemMsg = () => ({ role: 'system', content: personalityContent });
+  let memoryContent      = localStorage.getItem('eva-memory') || '';
+
+  const getSystemMsg = () => {
+    const mem = memoryContent.trim();
+    return {
+      role: 'system',
+      content: mem
+        ? `${personalityContent}\n\nЧто ты помнишь о пользователе:\n${mem}`
+        : personalityContent
+    };
+  };
 
   // ── State ────────────────────────────────────────────────────────────────────
   let wakeMode      = false;
@@ -1217,6 +1240,32 @@
     personalityText.value = DEFAULT_PERSONALITY;
   });
 
+  const memoryModal = document.getElementById('memoryModal');
+  const memoryText  = document.getElementById('memoryText');
+  const memoryBtn   = document.getElementById('memoryBtn');
+  const memorySave  = document.getElementById('memorySave');
+  const memoryClear = document.getElementById('memoryClear');
+
+  if (memoryContent) memoryBtn.classList.add('on');
+
+  memoryBtn.addEventListener('click', () => {
+    memoryText.value = memoryContent;
+    memoryModal.classList.add('open');
+    memoryText.focus();
+  });
+  memoryModal.addEventListener('click', e => {
+    if (e.target === memoryModal) memoryModal.classList.remove('open');
+  });
+  memorySave.addEventListener('click', () => {
+    memoryContent = memoryText.value.trim();
+    localStorage.setItem('eva-memory', memoryContent);
+    memoryBtn.classList.toggle('on', !!memoryContent);
+    memoryModal.classList.remove('open');
+  });
+  memoryClear.addEventListener('click', () => {
+    memoryText.value = '';
+  });
+
   const themeBtn = document.getElementById('themeBtn');
   const hlTheme  = document.getElementById('hlTheme');
   function applyTheme(light) {
@@ -1234,6 +1283,31 @@
 
   // ── Groq API ──────────────────────────────────────────────────────────────────
   let isProcessing = false;
+  let turnsSinceMemUpdate = 0;
+  const MEM_UPDATE_EVERY = 4;
+
+  async function updateMemory() {
+    const recent = history.slice(-10); // last 5 exchanges for context
+    try {
+      const res = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [
+          { role: 'system', content: 'Ты — система памяти ИИ-ассистента. Извлекай факты о пользователе из диалога.' },
+          ...recent,
+          { role: 'user', content: `Текущая память:\n${memoryContent || 'пусто'}\n\nОбнови память: кратко по пунктам запиши важные факты о пользователе из диалога (имя, интересы, что изучает, прогресс, предпочтения). Не повторяй то что уже есть. Если ничего нового — верни текущую память без изменений. Отвечай только содержимым памяти, без вступлений.` }
+        ]}),
+      });
+      const data = await res.json();
+      const updated = data.choices?.[0]?.message?.content?.trim();
+      if (updated) {
+        memoryContent = updated;
+        localStorage.setItem('eva-memory', updated);
+        const btn = document.getElementById('memoryBtn');
+        if (btn) btn.classList.add('on');
+      }
+    } catch {}
+  }
 
   async function sendToGroq(userText) {
     if (isProcessing) return;
@@ -1250,7 +1324,7 @@
       const res   = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: history }),
+        body: JSON.stringify({ messages: [getSystemMsg(), ...history.slice(1)] }),
         signal: controller.signal,
       });
       clearTimeout(timeout);
@@ -1261,6 +1335,11 @@
       saveHistory();
       addBubble('assistant', reply);
       speak(reply);
+      turnsSinceMemUpdate++;
+      if (turnsSinceMemUpdate >= MEM_UPDATE_EVERY) {
+        turnsSinceMemUpdate = 0;
+        updateMemory();
+      }
     } catch {
       clearTimeout(timeout);
       hideTyping();
