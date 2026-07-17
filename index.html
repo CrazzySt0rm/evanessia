@@ -1338,10 +1338,10 @@
   // ── Groq API ──────────────────────────────────────────────────────────────────
   let isProcessing = false;
   let turnsSinceMemUpdate = 0;
-  const MEM_UPDATE_EVERY = 4;
+  const MEM_UPDATE_EVERY = 6;
 
   async function updateMemory() {
-    const recent = history.slice(-10); // last 5 exchanges for context
+    const recent = history.slice(-6); // last 3 exchanges for context
     try {
       const res = await fetch('/chat', {
         method: 'POST',
@@ -1384,7 +1384,7 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [getSystemMsg(), ...history.slice(1).map(m =>
+          messages: [getSystemMsg(), ...history.slice(1).slice(-10).map(m =>
             typeof m.content === 'string' ? m
               : { role: m.role, content: m.content.find?.(c => c.type === 'text')?.text || '[изображение]' }
           )],
