@@ -721,8 +721,11 @@
               if (e.action !== currentVrmAction) return;
               const set = VRMA_SETS[evaState];
               if (!set?.length) return;
-              stateVrmaIdx[evaState] = ((stateVrmaIdx[evaState] ?? 0) + 1) % set.length;
-              switchVrmaAction(getVrmaAction(evaState), 0.8, true);
+              for (let t = 0; t < set.length; t++) {
+                stateVrmaIdx[evaState] = ((stateVrmaIdx[evaState] ?? 0) + 1) % set.length;
+                const next = getVrmaAction(evaState);
+                if (next) { switchVrmaAction(next, 0.8, true); return; }
+              }
             });
 
             const allUrls = [...new Set(Object.values(VRMA_SETS).flat())];
@@ -732,7 +735,7 @@
                 const anim = gltf.userData.vrmAnimations?.[0];
                 if (anim) {
                   const clip = createVRMAnimationClip(anim, vrm);
-                  if (url.includes('standard_idle') || url.includes('LookAround') || url.includes('Relax')) {
+                  if (url.includes('standard_idle')) {
                     clip.tracks = clip.tracks.filter(t => !t.name.endsWith('.position'));
                   }
                   const action = mixer.clipAction(clip);
