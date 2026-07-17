@@ -1394,7 +1394,9 @@
       });
       clearTimeout(timeout);
       const data  = await res.json();
-      let reply = data.choices?.[0]?.message?.content ?? 'Не получила ответ.';
+      if (data.error) throw new Error(data.error.message || 'API error');
+      let reply = data.choices?.[0]?.message?.content;
+      if (!reply) throw new Error('empty');
 
       // Extract emotion tag and apply to VRM
       const emoMatch = reply.match(/^\[e:(\w+)\]\s*/);
@@ -1412,6 +1414,7 @@
       }
     } catch {
       clearTimeout(timeout);
+      history.pop(); // remove failed user message so history stays clean
       hideTyping();
       setCharState(wakeMode ? 'standby' : '');
       setStatus(wakeMode ? 'жду «Эва»…' : 'ошибка соединения', false);
