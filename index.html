@@ -480,6 +480,57 @@
     @media (max-width: 620px) {
       .char-col { display: none; }
     }
+
+    /* ── Personality modal ── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.55);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.4rem 1.6rem;
+      width: min(480px, 92vw);
+      display: flex;
+      flex-direction: column;
+      gap: 0.8rem;
+      box-shadow: 0 8px 40px rgba(0,0,0,0.4);
+    }
+    .modal-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--accent);
+    }
+    .modal-hint {
+      font-size: 0.78rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+    .modal-textarea {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 0.7rem 0.9rem;
+      font-family: inherit;
+      font-size: 0.88rem;
+      resize: vertical;
+      outline: none;
+      line-height: 1.5;
+    }
+    .modal-textarea:focus { border-color: var(--accent); }
+    .modal-actions {
+      display: flex;
+      gap: 0.6rem;
+      justify-content: flex-end;
+    }
   </style>
 </head>
 <body>
@@ -497,6 +548,19 @@
     <button class="ctrl-btn" id="wakeBtn">⌀ слово-пробуждение</button>
     <button class="ctrl-btn" id="clearBtn">очистить историю</button>
     <button class="ctrl-btn" id="themeBtn">☀ светлая</button>
+    <button class="ctrl-btn" id="personalityBtn">⚙ личность</button>
+  </div>
+
+  <div class="modal-overlay" id="personalityModal">
+    <div class="modal-box">
+      <div class="modal-title">Личность Эванессии</div>
+      <div class="modal-hint">Опиши кто она, как говорит, что умеет. Это системный промпт — Эванессия не видит его, но следует ему.</div>
+      <textarea class="modal-textarea" id="personalityText" rows="7" spellcheck="false"></textarea>
+      <div class="modal-actions">
+        <button class="ctrl-btn" id="personalityReset">по умолчанию</button>
+        <button class="ctrl-btn on" id="personalitySave">сохранить</button>
+      </div>
+    </div>
   </div>
 
   <div class="bubble-wrap" id="bubbles"></div>
@@ -905,10 +969,9 @@
   const MAX_SAVED   = 40;
   const WAKE_WORDS  = ['эва', 'ева', 'eva', 'эванессия', 'эванессиа', 'evanessia'];
 
-  const SYSTEM_MSG = {
-    role: 'system',
-    content: 'Ты — Evanessia, умный голосовой ассистент. Отвечай кратко, дружелюбно и по-русски. Избегай длинных перечислений — говори живым языком, как в разговоре.'
-  };
+  const DEFAULT_PERSONALITY = 'Ты — Evanessia, умный голосовой ассистент. Отвечай кратко, дружелюбно и по-русски. Избегай длинных перечислений — говори живым языком, как в разговоре.';
+  let personalityContent = localStorage.getItem('eva-personality') || DEFAULT_PERSONALITY;
+  const getSystemMsg = () => ({ role: 'system', content: personalityContent });
 
   // ── State ────────────────────────────────────────────────────────────────────
   let wakeMode      = false;
@@ -928,13 +991,13 @@
   }
 
   // ── History ─────────────────────────────────────────────────────────────────
-  let history = [SYSTEM_MSG];
+  let history = [getSystemMsg()];
 
   function loadHistory() {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
       if (saved.length) {
-        history = [SYSTEM_MSG, ...saved];
+        history = [getSystemMsg(), ...saved];
         saved.forEach(m => addBubble(m.role, m.content, false));
         bubblesEl.scrollTop = bubblesEl.scrollHeight;
       }
@@ -948,7 +1011,7 @@
 
   function clearHistory() {
     if (!confirm('Очистить историю разговора?')) return;
-    history = [SYSTEM_MSG];
+    history = [getSystemMsg()];
     localStorage.removeItem(STORAGE_KEY);
     bubblesEl.innerHTML = '';
   }
@@ -1126,6 +1189,32 @@
   });
 
   clearBtn.addEventListener('click', clearHistory);
+
+  const personalityModal   = document.getElementById('personalityModal');
+  const personalityText    = document.getElementById('personalityText');
+  const personalityBtn     = document.getElementById('personalityBtn');
+  const personalitySave    = document.getElementById('personalitySave');
+  const personalityReset   = document.getElementById('personalityReset');
+
+  personalityBtn.addEventListener('click', () => {
+    personalityText.value = personalityContent;
+    personalityModal.classList.add('open');
+    personalityText.focus();
+  });
+  personalityModal.addEventListener('click', e => {
+    if (e.target === personalityModal) personalityModal.classList.remove('open');
+  });
+  personalitySave.addEventListener('click', () => {
+    const val = personalityText.value.trim();
+    if (!val) return;
+    personalityContent = val;
+    localStorage.setItem('eva-personality', val);
+    history[0] = getSystemMsg();
+    personalityModal.classList.remove('open');
+  });
+  personalityReset.addEventListener('click', () => {
+    personalityText.value = DEFAULT_PERSONALITY;
+  });
 
   const themeBtn = document.getElementById('themeBtn');
   const hlTheme  = document.getElementById('hlTheme');
