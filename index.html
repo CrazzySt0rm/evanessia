@@ -877,6 +877,12 @@
     camera.updateProjectionMatrix();
     renderer.setSize(w, h);
   });
+
+  window.setSceneLightTheme = (isLight) => {
+    ambient.intensity = isLight ? 1.1 : 0.6;
+    key.intensity     = isLight ? 1.8 : 1.2;
+    key.color.setHex(isLight ? 0xffffff : 0xd0ccff);
+  };
 </script>
 
 <script>
@@ -1125,9 +1131,7 @@
       ? 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css'
       : 'https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css';
     localStorage.setItem('eva-theme', light ? 'light' : 'dark');
-    ambient.intensity = light ? 1.1 : 0.6;
-    key.intensity     = light ? 1.8 : 1.2;
-    key.color.setHex(light ? 0xffffff : 0xd0ccff);
+    window.setSceneLightTheme?.(light);
   }
   applyTheme(localStorage.getItem('eva-theme') === 'light');
   themeBtn.addEventListener('click', () => applyTheme(document.documentElement.dataset.theme !== 'light'));
