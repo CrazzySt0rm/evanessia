@@ -1233,18 +1233,27 @@
   themeBtn.addEventListener('click', () => applyTheme(document.documentElement.dataset.theme !== 'light'));
 
   // ── Groq API ──────────────────────────────────────────────────────────────────
+  let isProcessing = false;
+
   async function sendToGroq(userText) {
+    if (isProcessing) return;
+    isProcessing = true;
     history.push({ role: 'user', content: userText });
     setCharState('thinking');
     setStatus('думаю…', true);
     showTyping();
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
     try {
       const res   = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ messages: history }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       const data  = await res.json();
       const reply = data.choices?.[0]?.message?.content ?? 'Не получила ответ.';
       hideTyping();
@@ -1253,9 +1262,12 @@
       addBubble('assistant', reply);
       speak(reply);
     } catch {
+      clearTimeout(timeout);
       hideTyping();
       setCharState(wakeMode ? 'standby' : '');
       setStatus(wakeMode ? 'жду «Эва»…' : 'ошибка соединения', false);
+    } finally {
+      isProcessing = false;
     }
   }
 
