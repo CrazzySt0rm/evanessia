@@ -1384,7 +1384,10 @@
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [getSystemMsg(), ...history.slice(1)],
+          messages: [getSystemMsg(), ...history.slice(1).map(m =>
+            typeof m.content === 'string' ? m
+              : { role: m.role, content: m.content.find?.(c => c.type === 'text')?.text || '[изображение]' }
+          )],
           model: imageDataUrl ? 'llama-3.2-11b-vision-preview' : undefined,
         }),
         signal: controller.signal,
@@ -1443,6 +1446,33 @@
     pendingImage = null;
     imgPreviewWrap.classList.remove('visible');
     imgBtn.classList.remove('has-image');
+  });
+
+  function setImageFromFile(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      pendingImage = e.target.result;
+      imgPreviewEl.src = pendingImage;
+      imgPreviewWrap.classList.add('visible');
+      imgBtn.classList.add('has-image');
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // Paste from clipboard (Ctrl+V)
+  document.addEventListener('paste', e => {
+    const item = [...e.clipboardData.items].find(i => i.type.startsWith('image/'));
+    if (item) setImageFromFile(item.getAsFile());
+  });
+
+  // Drag & drop onto chat area
+  const chatCol = document.querySelector('.chat-col');
+  chatCol.addEventListener('dragover', e => { e.preventDefault(); });
+  chatCol.addEventListener('drop', e => {
+    e.preventDefault();
+    const file = e.dataTransfer.files[0];
+    setImageFromFile(file);
   });
 
   // ── Text input ────────────────────────────────────────────────────────────────
