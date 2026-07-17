@@ -1093,6 +1093,7 @@
 
   // ── Mic button ───────────────────────────────────────────────────────────────
   micBtn.addEventListener('click', () => {
+    unlockAudio();
     if (isSpeaking) { stopSpeaking(); return; }
     if (wakeMode && !awaitingQuery) return;
     if (isRecording) {
@@ -1260,6 +1261,7 @@
 
   // ── Text input ────────────────────────────────────────────────────────────────
   async function handleTextSend() {
+    unlockAudio();
     const text = textInput.value.trim();
     if (!text) return;
     textInput.value = '';
@@ -1273,6 +1275,17 @@
   });
 
   // ── TTS ───────────────────────────────────────────────────────────────────────
+  // Unlock HTMLAudioElement on iOS/Android: browsers require a user gesture in the
+  // same synchronous call stack as audio.play(). Playing a silent clip here
+  // marks the document as "audio-unlocked" so later async plays succeed.
+  let audioUnlocked = false;
+  function unlockAudio() {
+    if (audioUnlocked) return;
+    audioUnlocked = true;
+    const a = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+    a.play().catch(() => {});
+  }
+
   // ── Голоса Fish Audio — добавляй новые сюда ──────────────────────────────────
   const VOICES = [
     { name: 'Молодая (RU)',  id: '66485766aad041cbbe2ef58b080e33a6' },
@@ -1323,8 +1336,8 @@
   // Split reply into sentences so we can pipeline TTS requests:
   // fetch sentence N+1 while sentence N is playing → hides latency after the first sentence
   function splitSentences(text) {
-    const parts = text.match(/[^.!?]+[.!?]+/g)?.map(s => s.trim()).filter(Boolean);
-    return parts && parts.length > 1 ? parts : [text];
+    const parts = text.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+    return parts.length > 1 ? parts : [text];
   }
 
   function fetchTtsBlob(chunk) {
