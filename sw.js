@@ -13,12 +13,29 @@ self.addEventListener('activate', e => {
   self.clients.claim();
 });
 
-// Network-first: always try network, fall back to cache for shell
+const isModel = url => /\.(vrm|vrma)$/i.test(url.pathname);
+
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   const url = new URL(e.request.url);
-  // API calls — never cache
   if (url.pathname.startsWith('/chat') || url.pathname.startsWith('/tts')) return;
+
+  if (isModel(url)) {
+    // Cache-first for VRM/VRMA: large files that rarely change
+    e.respondWith(
+      caches.match(e.request).then(cached => {
+        if (cached) return cached;
+        return fetch(e.request).then(r => {
+          const clone = r.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+          return r;
+        });
+      })
+    );
+    return;
+  }
+
+  // Network-first for everything else
   e.respondWith(
     fetch(e.request)
       .then(r => { const clone = r.clone(); caches.open(CACHE).then(c => c.put(e.request, clone)); return r; })
