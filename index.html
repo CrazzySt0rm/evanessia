@@ -1018,7 +1018,7 @@
     if (emotionFadeTimer) { clearTimeout(emotionFadeTimer); emotionFadeTimer = null; }
     const expr = EMOTION_EXPRS[emotion];
     if (expr) {
-      setExpr(expr, 0.75);
+      setExpr(expr, 0.45);
       emotionFadeTimer = setTimeout(() => { setExpr(expr, 0); emotionFadeTimer = null; }, 4000);
     }
   };
@@ -1338,7 +1338,7 @@
   // ── Groq API ──────────────────────────────────────────────────────────────────
   let isProcessing = false;
   let turnsSinceMemUpdate = 0;
-  const MEM_UPDATE_EVERY = 6;
+  const MEM_UPDATE_EVERY = 12;
 
   async function updateMemory() {
     const recent = history.slice(-6); // last 3 exchanges for context
