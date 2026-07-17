@@ -4,6 +4,12 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>Evanessia</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#7c5cbf" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Evanessia" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
 
   <script type="importmap">
   {
@@ -570,6 +576,22 @@
   const fill = new THREE.DirectionalLight(0xaaaacc, 0.3);
   fill.position.set(2, 0.5, 1); scene.add(fill);
 
+  // ── Eye tracking target ──────────────────────────────────────────────────────
+  const lookAtTarget = new THREE.Object3D();
+  scene.add(lookAtTarget);
+  lookAtTarget.position.set(0, 1.4, 2);
+
+  let mouseNX = 0, mouseNY = 0;
+  window.addEventListener('mousemove', e => {
+    mouseNX = (e.clientX / window.innerWidth)  * 2 - 1;
+    mouseNY = (e.clientY / window.innerHeight) * 2 - 1;
+  });
+  window.addEventListener('touchmove', e => {
+    const t = e.touches[0];
+    mouseNX = (t.clientX / window.innerWidth)  * 2 - 1;
+    mouseNY = (t.clientY / window.innerHeight) * 2 - 1;
+  }, { passive: true });
+
   let vrm      = null;
   let mixer    = null;
   let evaState = 'idle';
@@ -683,6 +705,7 @@
           try { VRMUtils.removeUnnecessaryJoints(vrm.scene); } catch {}
           vrm.scene.rotation.y = Math.PI;
           scene.add(vrm.scene);
+          if (vrm.lookAt) vrm.lookAt.target = lookAtTarget;
           NB.forEach(n => {
             const b = vrm.humanoid.getNormalizedBoneNode(n);
             if (b) nb[n] = b;
@@ -833,6 +856,10 @@
       nb3('leftUpperArm',  curArmLX, 0, curArmLZ);
       nb3('rightUpperArm', curArmRX, 0, curArmRZ);
     }
+
+    // Smooth eye tracking — target follows mouse with ~300ms lag
+    lookAtTarget.position.x = lerp(lookAtTarget.position.x, mouseNX * 1.5, dt * 3);
+    lookAtTarget.position.y = lerp(lookAtTarget.position.y, 1.4 - mouseNY * 0.8, dt * 3);
 
     vrm.update(dt);
     renderer.render(scene, camera);
@@ -1294,6 +1321,10 @@
   }
 
   loadHistory();
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js');
+  }
 </script>
 </body>
 </html>
