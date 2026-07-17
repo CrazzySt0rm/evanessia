@@ -886,6 +886,9 @@
     key.intensity     = isLight ? 1.8 : 1.2;
     key.color.setHex(isLight ? 0xffffff : 0xd0ccff);
   };
+
+  // Module runs after regular scripts, so apply saved theme lighting here
+  if (localStorage.getItem('eva-theme') === 'light') window.setSceneLightTheme(true);
 </script>
 
 <script>
