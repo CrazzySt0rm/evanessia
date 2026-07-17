@@ -481,6 +481,42 @@
       .char-col { display: none; }
     }
 
+    /* ── Image upload ── */
+    .img-btn {
+      flex-shrink: 0;
+      width: 38px; height: 38px;
+      border-radius: 50%;
+      border: none;
+      background: var(--surface);
+      color: var(--muted);
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s, color 0.2s;
+    }
+    .img-btn:hover, .img-btn.has-image { background: var(--accent); color: #fff; }
+    .img-btn svg { width: 16px; height: 16px; fill: currentColor; }
+    .img-preview-wrap {
+      display: none;
+      position: relative;
+      width: fit-content;
+      margin-bottom: 0.4rem;
+    }
+    .img-preview-wrap.visible { display: block; }
+    .img-preview-wrap img { max-height: 80px; border-radius: 8px; display: block; }
+    .img-preview-wrap button {
+      position: absolute; top: -6px; right: -6px;
+      width: 18px; height: 18px;
+      border-radius: 50%; border: none;
+      background: #333; color: #fff;
+      font-size: 11px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .bubble.user .msg-image {
+      max-width: 200px; max-height: 150px;
+      border-radius: 8px; display: block;
+      margin-bottom: 0.3rem;
+    }
+
     /* ── Personality modal ── */
     .modal-overlay {
       display: none;
@@ -578,11 +614,19 @@
 
   <div class="bubble-wrap" id="bubbles"></div>
 
+  <div class="img-preview-wrap" id="imgPreviewWrap">
+    <img id="imgPreviewEl" src="" alt="" />
+    <button id="imgClearBtn" title="Убрать">✕</button>
+  </div>
   <div class="input-row">
     <button class="mic-btn" id="micBtn" title="Нажми чтобы говорить">
       <svg viewBox="0 0 24 24"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.93V20H9v2h6v-2h-2v-2.07A7 7 0 0 0 19 11h-2z"/></svg>
     </button>
     <input class="text-input" id="textInput" type="text" placeholder="Напишите сообщение…" autocomplete="off" />
+    <button class="img-btn" id="imgBtn" title="Прикрепить изображение">
+      <svg viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+    </button>
+    <input type="file" id="imgInput" accept="image/*" style="display:none" />
     <button class="send-btn" id="sendBtn">
       <svg viewBox="0 0 24 24"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
     </button>
@@ -966,6 +1010,18 @@
 
   // Module runs after regular scripts, so apply saved theme lighting here
   if (localStorage.getItem('eva-theme') === 'light') window.setSceneLightTheme(true);
+
+  const EMOTION_EXPRS = { happy: 'happy', sad: 'sad', surprised: 'surprised', angry: 'angry' };
+  let emotionFadeTimer = null;
+  window.setVrmEmotion = (emotion) => {
+    Object.values(EMOTION_EXPRS).forEach(e => setExpr(e, 0));
+    if (emotionFadeTimer) { clearTimeout(emotionFadeTimer); emotionFadeTimer = null; }
+    const expr = EMOTION_EXPRS[emotion];
+    if (expr) {
+      setExpr(expr, 0.75);
+      emotionFadeTimer = setTimeout(() => { setExpr(expr, 0); emotionFadeTimer = null; }, 4000);
+    }
+  };
 </script>
 
 <script>
@@ -986,14 +1042,12 @@
   let personalityContent = localStorage.getItem('eva-personality') || DEFAULT_PERSONALITY;
   let memoryContent      = localStorage.getItem('eva-memory') || '';
 
+  const EMOTION_INSTR = '\n\nВ самом начале каждого ответа добавляй тег эмоции: [e:happy], [e:sad], [e:surprised], [e:angry] или [e:neutral]. Выбирай по контексту. После тега сразу пиши ответ, без переноса строки.';
+
   const getSystemMsg = () => {
     const mem = memoryContent.trim();
-    return {
-      role: 'system',
-      content: mem
-        ? `${personalityContent}\n\nЧто ты помнишь о пользователе:\n${mem}`
-        : personalityContent
-    };
+    const base = mem ? `${personalityContent}\n\nЧто ты помнишь о пользователе:\n${mem}` : personalityContent;
+    return { role: 'system', content: base + EMOTION_INSTR };
   };
 
   // ── State ────────────────────────────────────────────────────────────────────
@@ -1028,7 +1082,7 @@
   }
 
   function saveHistory() {
-    const msgs = history.filter(m => m.role !== 'system').slice(-MAX_SAVED);
+    const msgs = history.filter(m => m.role !== 'system' && typeof m.content === 'string').slice(-MAX_SAVED);
     localStorage.setItem(STORAGE_KEY, JSON.stringify(msgs));
   }
 
@@ -1309,10 +1363,15 @@
     } catch {}
   }
 
-  async function sendToGroq(userText) {
+  async function sendToGroq(userText, imageDataUrl = null) {
     if (isProcessing) return;
     isProcessing = true;
-    history.push({ role: 'user', content: userText });
+
+    const userContent = imageDataUrl
+      ? [{ type: 'image_url', image_url: { url: imageDataUrl } }, { type: 'text', text: userText || 'Что на изображении?' }]
+      : userText;
+
+    history.push({ role: 'user', content: userContent });
     setCharState('thinking');
     setStatus('думаю…', true);
     showTyping();
@@ -1324,12 +1383,20 @@
       const res   = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [getSystemMsg(), ...history.slice(1)] }),
+        body: JSON.stringify({
+          messages: [getSystemMsg(), ...history.slice(1)],
+          model: imageDataUrl ? 'llama-3.2-11b-vision-preview' : undefined,
+        }),
         signal: controller.signal,
       });
       clearTimeout(timeout);
       const data  = await res.json();
-      const reply = data.choices?.[0]?.message?.content ?? 'Не получила ответ.';
+      let reply = data.choices?.[0]?.message?.content ?? 'Не получила ответ.';
+
+      // Extract emotion tag and apply to VRM
+      const emoMatch = reply.match(/^\[e:(\w+)\]\s*/);
+      if (emoMatch) { window.setVrmEmotion?.(emoMatch[1]); reply = reply.slice(emoMatch[0].length); }
+
       hideTyping();
       history.push({ role: 'assistant', content: reply });
       saveHistory();
@@ -1350,14 +1417,57 @@
     }
   }
 
+  // ── Image upload ─────────────────────────────────────────────────────────────
+  let pendingImage = null;
+  const imgBtn        = document.getElementById('imgBtn');
+  const imgInput      = document.getElementById('imgInput');
+  const imgPreviewWrap = document.getElementById('imgPreviewWrap');
+  const imgPreviewEl  = document.getElementById('imgPreviewEl');
+  const imgClearBtn   = document.getElementById('imgClearBtn');
+
+  imgBtn.addEventListener('click', () => imgInput.click());
+  imgInput.addEventListener('change', () => {
+    const file = imgInput.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      pendingImage = e.target.result;
+      imgPreviewEl.src = pendingImage;
+      imgPreviewWrap.classList.add('visible');
+      imgBtn.classList.add('has-image');
+    };
+    reader.readAsDataURL(file);
+    imgInput.value = '';
+  });
+  imgClearBtn.addEventListener('click', () => {
+    pendingImage = null;
+    imgPreviewWrap.classList.remove('visible');
+    imgBtn.classList.remove('has-image');
+  });
+
   // ── Text input ────────────────────────────────────────────────────────────────
   async function handleTextSend() {
     unlockAudio();
     const text = textInput.value.trim();
-    if (!text) return;
+    if (!text && !pendingImage) return;
     textInput.value = '';
-    addBubble('user', text);
-    await sendToGroq(text);
+    const img = pendingImage;
+    if (img) {
+      pendingImage = null;
+      imgPreviewWrap.classList.remove('visible');
+      imgBtn.classList.remove('has-image');
+      const div = document.createElement('div');
+      div.className = 'bubble user';
+      const image = document.createElement('img');
+      image.src = img; image.className = 'msg-image';
+      div.appendChild(image);
+      if (text) { const span = document.createElement('span'); span.textContent = text; div.appendChild(span); }
+      bubblesEl.appendChild(div);
+      bubblesEl.scrollTop = bubblesEl.scrollHeight;
+    } else {
+      addBubble('user', text);
+    }
+    await sendToGroq(text, img);
   }
 
   sendBtn.addEventListener('click', handleTextSend);

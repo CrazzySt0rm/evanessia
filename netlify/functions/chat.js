@@ -8,7 +8,7 @@ exports.handler = async (event) => {
   if (event.httpMethod === 'OPTIONS') return { statusCode: 200, headers: cors, body: '' };
 
   try {
-    const { messages } = JSON.parse(event.body);
+    const { messages, model } = JSON.parse(event.body);
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -17,7 +17,7 @@ exports.handler = async (event) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
+        model: model || 'llama-3.3-70b-versatile',
         messages,
         max_tokens: 512,
         temperature: 0.7,
