@@ -599,7 +599,7 @@
 
   // Each state gets a playlist of VRMA animations to rotate through
   const VRMA_SETS = {
-    idle:      ['./models/VRMA_06.vrma', './models/VRMA_01.vrma', './models/LookAround.vrma', './models/Relax.vrma'],
+    idle:      ['./models/VRMA_06.vrma', './models/VRMA_01.vrma', './models/idle_loop.vrma', './models/standard_idle.vrma'],
     standby:   ['./models/VRMA_06.vrma', './models/VRMA_01.vrma'],
     listening: ['./models/VRMA_02.vrma'],
     thinking:  ['./models/VRMA_01.vrma', './models/VRMA_07.vrma'],
@@ -735,7 +735,7 @@
                 const anim = gltf.userData.vrmAnimations?.[0];
                 if (anim) {
                   const clip = createVRMAnimationClip(anim, vrm);
-                  if (url.includes('standard_idle')) {
+                  if (url.includes('standard_idle') || url.includes('idle_loop')) {
                     clip.tracks = clip.tracks.filter(t => !t.name.endsWith('.position'));
                   }
                   const action = mixer.clipAction(clip);
